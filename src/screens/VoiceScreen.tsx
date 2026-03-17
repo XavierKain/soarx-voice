@@ -145,6 +145,6 @@ const styles = StyleSheet.create({
   leaveText: {
     fontSize: fonts.body,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: colors.red,
   },
 });

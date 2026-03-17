@@ -4,7 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useUser} from '../contexts/UserContext';
 import {generateChannelName, isValidChannelName} from '../utils/channelGenerator';
 import {useAgoraContext} from '../contexts/AgoraContext';
-import {colors, fonts, spacing, radius} from '../theme';
+import {fonts, spacing, radius} from '../theme';
+import {useTheme} from '../contexts/ThemeContext';
 
 const FAVORITES_KEY = '@soarx_favorite_channels';
 const DEFAULT_CHANNEL = 'TARIFA-01';
@@ -17,6 +18,7 @@ interface HomeScreenProps {
 export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
   const {pilotName, setPilotName} = useUser();
   const {joinChannel} = useAgoraContext();
+  const {colors, mode, toggleTheme} = useTheme();
   const [channel, setChannel] = useState(DEFAULT_CHANNEL);
   const [isJoining, setIsJoining] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -79,22 +81,29 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+    <View style={[styles.container, {backgroundColor: colors.bg}]}>
+      <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bg} />
+
+      <TouchableOpacity
+        style={[styles.themeToggle, {backgroundColor: colors.bgCard, borderColor: colors.cardBorder}]}
+        onPress={toggleTheme}
+        activeOpacity={0.7}>
+        <Text style={styles.themeToggleIcon}>{mode === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19'}</Text>
+      </TouchableOpacity>
 
       <View style={styles.titleBlock}>
-        <Text style={styles.title}>
+        <Text style={[styles.title, {color: colors.text}]}>
           SOAR
-          <Text style={styles.titleX}>X</Text>
+          <Text style={[styles.titleX, {color: colors.primary, textShadowColor: colors.primaryGlow}]}>X</Text>
         </Text>
-        <Text style={styles.subtitle}>VOICE</Text>
+        <Text style={[styles.subtitle, {color: colors.primary}]}>VOICE</Text>
       </View>
 
-      <View style={styles.card}>
+      <View style={[styles.card, {backgroundColor: colors.bgCard, borderColor: colors.cardBorder}]}>
         <View style={styles.fieldBlock}>
-          <Text style={styles.label}>PILOT NAME</Text>
+          <Text style={[styles.label, {color: colors.textSecondary}]}>PILOT NAME</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, {backgroundColor: colors.bgInput, borderColor: colors.cardBorder, color: colors.text}]}
             value={pilotName}
             onChangeText={setPilotName}
             placeholder="Your name"
@@ -105,10 +114,10 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
         </View>
 
         <View style={styles.fieldBlock}>
-          <Text style={styles.label}>CHANNEL</Text>
+          <Text style={[styles.label, {color: colors.textSecondary}]}>CHANNEL</Text>
           <View style={styles.channelRow}>
             <TextInput
-              style={[styles.input, styles.channelInput]}
+              style={[styles.input, styles.channelInput, {backgroundColor: colors.bgInput, borderColor: colors.cardBorder, color: colors.text}]}
               value={channel}
               onChangeText={text => setChannel(text.toUpperCase())}
               placeholder="TARIFA-01"
@@ -176,6 +185,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxxl + 20,
     paddingBottom: spacing.xxl,
+  },
+
+  // --- Theme toggle ---
+  themeToggle: {
+    position: 'absolute',
+    top: spacing.xxxl + 10,
+    right: spacing.xxl,
+    width: 40,
+    height: 40,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  themeToggleIcon: {
+    fontSize: 18,
   },
 
   // --- Title / Logo ---
