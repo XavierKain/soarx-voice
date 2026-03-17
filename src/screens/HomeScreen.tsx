@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useUser} from '../contexts/UserContext';
 import {generateChannelName, isValidChannelName} from '../utils/channelGenerator';
 import {useAgoraContext} from '../contexts/AgoraContext';
-import {fonts, spacing, radius} from '../theme';
+import {colors as defaultColors, fonts, spacing, radius} from '../theme';
 import {useTheme} from '../contexts/ThemeContext';
 
 const FAVORITES_KEY = '@soarx_favorite_channels';
@@ -85,7 +85,7 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
       <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bg} />
 
       <TouchableOpacity
-        style={[styles.themeToggle, {backgroundColor: colors.bgCard, borderColor: colors.cardBorder}]}
+        style={[styles.themeToggle, {backgroundColor: colors.bgCard, borderColor: defaultColors.cardBorder}]}
         onPress={toggleTheme}
         activeOpacity={0.7}>
         <Text style={styles.themeToggleIcon}>{mode === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19'}</Text>
@@ -94,16 +94,16 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
       <View style={styles.titleBlock}>
         <Text style={[styles.title, {color: colors.text}]}>
           SOAR
-          <Text style={[styles.titleX, {color: colors.primary, textShadowColor: colors.primaryGlow}]}>X</Text>
+          <Text style={[styles.titleX, {color: colors.primary, textShadowColor: defaultColors.primaryGlow}]}>X</Text>
         </Text>
         <Text style={[styles.subtitle, {color: colors.primary}]}>VOICE</Text>
       </View>
 
-      <View style={[styles.card, {backgroundColor: colors.bgCard, borderColor: colors.cardBorder}]}>
+      <View style={[styles.card, {backgroundColor: colors.bgCard, borderColor: defaultColors.cardBorder}]}>
         <View style={styles.fieldBlock}>
           <Text style={[styles.label, {color: colors.textSecondary}]}>PILOT NAME</Text>
           <TextInput
-            style={[styles.input, {backgroundColor: colors.bgInput, borderColor: colors.cardBorder, color: colors.text}]}
+            style={[styles.input, {backgroundColor: colors.bgInput, borderColor: colors.cardBorder, color: defaultColors.text}]}
             value={pilotName}
             onChangeText={setPilotName}
             placeholder="Your name"
@@ -117,7 +117,7 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
           <Text style={[styles.label, {color: colors.textSecondary}]}>CHANNEL</Text>
           <View style={styles.channelRow}>
             <TextInput
-              style={[styles.input, styles.channelInput, {backgroundColor: colors.bgInput, borderColor: colors.cardBorder, color: colors.text}]}
+              style={[styles.input, styles.channelInput, {backgroundColor: colors.bgInput, borderColor: colors.cardBorder, color: defaultColors.text}]}
               value={channel}
               onChangeText={text => setChannel(text.toUpperCase())}
               placeholder="TARIFA-01"
@@ -181,7 +181,7 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: defaultColors.bg,
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxxl + 20,
     paddingBottom: spacing.xxl,
@@ -213,17 +213,17 @@ const styles = StyleSheet.create({
     fontSize: 44,
     fontWeight: '800',
     letterSpacing: 4,
-    color: colors.text,
+    color: defaultColors.text,
   },
   titleX: {
-    color: colors.primary,
-    textShadowColor: colors.primaryGlow,
+    color: defaultColors.primary,
+    textShadowColor: defaultColors.primaryGlow,
     textShadowOffset: {width: 0, height: 0},
     textShadowRadius: 18,
   },
   subtitle: {
     fontSize: 14,
-    color: colors.primary,
+    color: defaultColors.primary,
     marginTop: 2,
     letterSpacing: 8,
     fontWeight: '600',
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
 
   // --- Card wrapper ---
   card: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: defaultColors.bgCard,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.06)',
@@ -245,19 +245,19 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: fonts.label,
-    color: colors.textSecondary,
+    color: defaultColors.textSecondary,
     letterSpacing: 1.5,
     fontWeight: '600',
     marginBottom: spacing.sm,
   },
   input: {
-    backgroundColor: colors.bgInput,
+    backgroundColor: defaultColors.bgInput,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.06)',
     borderRadius: radius.md,
     padding: spacing.lg,
     fontSize: fonts.input,
-    color: colors.text,
+    color: defaultColors.text,
     fontWeight: '500',
   },
   channelRow: {
@@ -268,9 +268,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   iconButton: {
-    backgroundColor: colors.primaryLight,
+    backgroundColor: defaultColors.primaryLight,
     borderWidth: 1,
-    borderColor: colors.primaryBorder,
+    borderColor: defaultColors.primaryBorder,
     borderRadius: radius.md,
     padding: spacing.lg,
     alignItems: 'center',
@@ -279,17 +279,17 @@ const styles = StyleSheet.create({
   },
   iconButtonText: {
     fontSize: 20,
-    color: colors.primary,
+    color: defaultColors.primary,
   },
   iconButtonTextActive: {
-    color: colors.primary,
-    textShadowColor: colors.primaryGlow,
+    color: defaultColors.primary,
+    textShadowColor: defaultColors.primaryGlow,
     textShadowOffset: {width: 0, height: 0},
     textShadowRadius: 8,
   },
   hint: {
     fontSize: fonts.small,
-    color: colors.textMuted,
+    color: defaultColors.textMuted,
     marginTop: spacing.sm,
   },
 
@@ -299,31 +299,31 @@ const styles = StyleSheet.create({
   },
   favoritesLabel: {
     fontSize: fonts.label,
-    color: colors.textSecondary,
+    color: defaultColors.textSecondary,
     letterSpacing: 1.5,
     fontWeight: '600',
     marginBottom: spacing.sm,
   },
   favChip: {
-    backgroundColor: colors.primaryLight,
+    backgroundColor: defaultColors.primaryLight,
     borderWidth: 1,
-    borderColor: colors.primaryBorder,
+    borderColor: defaultColors.primaryBorder,
     borderRadius: radius.full,
     paddingHorizontal: 16,
     paddingVertical: 8,
     marginRight: 8,
   },
   favChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: defaultColors.primary,
+    borderColor: defaultColors.primary,
   },
   favChipText: {
     fontSize: fonts.sm,
     fontWeight: '600',
-    color: colors.primary,
+    color: defaultColors.primary,
   },
   favChipTextActive: {
-    color: colors.white,
+    color: defaultColors.white,
   },
 
   // --- Bottom area ---
@@ -331,11 +331,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   joinButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: defaultColors.primary,
     borderRadius: radius.lg,
     padding: spacing.xl,
     alignItems: 'center',
-    shadowColor: colors.primary,
+    shadowColor: defaultColors.primary,
     shadowOffset: {width: 0, height: 6},
     shadowOpacity: 0.45,
     shadowRadius: 16,
@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
   joinText: {
     fontSize: fonts.button,
     fontWeight: '700',
-    color: colors.white,
+    color: defaultColors.white,
     letterSpacing: 0.5,
   },
   bleButton: {
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   bleButtonText: {
-    color: colors.textSecondary,
+    color: defaultColors.textSecondary,
     fontSize: 14,
     fontWeight: '500',
     textDecorationLine: 'underline',
@@ -368,6 +368,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.lg,
     fontSize: fonts.xs,
-    color: colors.textDim,
+    color: defaultColors.textDim,
   },
 });
