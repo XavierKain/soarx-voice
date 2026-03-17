@@ -36,6 +36,19 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   const isMutedRef = useRef(false);
   const channelNameRef = useRef('');
 
+  // Encode string to Uint8Array (Hermes-compatible, no TextEncoder needed)
+  const strToBytes = (str: string): Uint8Array => {
+    const arr = new Uint8Array(str.length);
+    for (let i = 0; i < str.length; i++) arr[i] = str.charCodeAt(i) & 0xff;
+    return arr;
+  };
+  const bytesToStr = (buf: any): string => {
+    const bytes = new Uint8Array(buf);
+    let str = '';
+    for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+    return str;
+  };
+
   // Send pilot name to all users in the channel via data stream
   const broadcastName = useCallback((engine: IRtcEngine) => {
     try {
@@ -44,9 +57,9 @@ export function AgoraProvider({children}: {children: ReactNode}) {
         dataStreamIdRef.current = streamId;
       }
       const msg = JSON.stringify({type: 'name', name: pilotNameRef.current});
-      const encoder = new TextEncoder();
-      const data = encoder.encode(msg);
+      const data = strToBytes(msg);
       engine.sendStreamMessage(dataStreamIdRef.current!, data, data.length);
+      console.log('[Agora] Broadcast name:', pilotNameRef.current);
     } catch (e) {
       console.warn('[Agora] broadcastName error:', e);
     }
@@ -82,15 +95,17 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     // Receive data stream messages (pilot names)
     engine.addListener('onStreamMessage', (connection, remoteUid, streamId, data) => {
       try {
-        const decoder = new TextDecoder();
-        const text = decoder.decode(data as ArrayBuffer);
+        const text = bytesToStr(data);
         const msg = JSON.parse(text);
+        console.log('[Agora] Received name from', remoteUid, ':', msg.name);
         if (msg.type === 'name' && msg.name) {
           setRemotePilots(prev =>
             prev.map(p => p.uid === remoteUid ? {...p, name: msg.name} : p),
           );
         }
-      } catch {}
+      } catch (e) {
+        console.warn('[Agora] onStreamMessage parse error:', e);
+      }
     });
 
     engine.addListener('onAudioVolumeIndication', (connection, speakers, totalVolume) => {
@@ -140,8 +155,10 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     engine.muteLocalAudioStream(false);
     startForegroundService(config.channelName);
 
-    // Broadcast our name after joining (with delay to let connection settle)
-    setTimeout(() => broadcastName(engine), 1500);
+    // Broadcast our name multiple times after joining (reliability)
+    setTimeout(() => broadcastName(engine), 1000);
+    setTimeout(() => broadcastName(engine), 3000);
+    setTimeout(() => broadcastName(engine), 6000);
   }, [initEngine, broadcastName]);
 
   const leaveChannel = useCallback(async () => {
