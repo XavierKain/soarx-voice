@@ -34,7 +34,7 @@
 		<true/>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string>SoarX Voice may use your location for Bluetooth device scanning.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>SoarX Voice uses Bluetooth to connect your mute/unmute control buttons.</string>
 	<key>NSCameraUsageDescription</key>

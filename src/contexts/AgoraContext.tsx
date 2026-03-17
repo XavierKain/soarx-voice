@@ -17,9 +17,11 @@ interface AgoraContextValue {
   connectionState: ConnectionState;
   remotePilots: Pilot[];
   isMuted: boolean;
+  isSpeakerOn: boolean;
   joinChannel: (config: ChannelConfig) => Promise<void>;
   leaveChannel: () => Promise<void>;
   toggleMute: () => void;
+  toggleSpeaker: () => void;
   channelName: string;
 }
 
@@ -30,6 +32,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [remotePilots, setRemotePilots] = useState<Pilot[]>([]);
   const [isMuted, setIsMuted] = useState(false);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
   const [channelName, setChannelName] = useState('');
   const isMutedRef = useRef(false);
   const channelNameRef = useRef('');
@@ -131,7 +134,6 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     isMutedRef.current = false;
   }, []);
 
-  // Basculer l'état muet du microphone local
   const toggleMute = useCallback(() => {
     const engine = engineRef.current;
     if (engine) {
@@ -143,15 +145,26 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     }
   }, []);
 
+  const toggleSpeaker = useCallback(() => {
+    const engine = engineRef.current;
+    if (engine) {
+      const newSpeaker = !isSpeakerOn;
+      engine.setEnableSpeakerphone(newSpeaker);
+      setIsSpeakerOn(newSpeaker);
+    }
+  }, [isSpeakerOn]);
+
   return (
     <AgoraContext.Provider
       value={{
         connectionState,
         remotePilots,
         isMuted,
+        isSpeakerOn,
         joinChannel,
         leaveChannel,
         toggleMute,
+        toggleSpeaker,
         channelName,
       }}>
       {children}

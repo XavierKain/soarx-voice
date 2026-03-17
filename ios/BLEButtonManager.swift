@@ -306,7 +306,7 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
   }
 
   func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-    if let error = error { return }
+    if error != nil { return }
 
     let charUUID = characteristic.uuid.uuidString.uppercased()
     let hexValue = characteristic.value?.map { String(format: "%02x", $0) }.joined() ?? "nil"
