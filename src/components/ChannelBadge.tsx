@@ -1,8 +1,10 @@
 import React, {useEffect, useRef} from 'react';
 import {Animated, StyleSheet, Text, View} from 'react-native';
-import {colors, fonts, radius} from '../theme';
+import {useTheme} from '../contexts/ThemeContext';
+import {fonts, radius} from '../theme';
 
 export function ChannelBadge() {
+  const {colors} = useTheme();
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -23,9 +25,15 @@ export function ChannelBadge() {
   }, [pulseAnim]);
 
   return (
-    <View style={styles.container}>
-      <Animated.View style={[styles.dot, {opacity: pulseAnim}]} />
-      <Text style={styles.text}>Live</Text>
+    <View
+      style={[
+        styles.container,
+        {backgroundColor: colors.bgCard, borderColor: 'rgba(34, 197, 94, 0.25)'},
+      ]}>
+      <Animated.View
+        style={[styles.dot, {opacity: pulseAnim, backgroundColor: colors.green}]}
+      />
+      <Text style={[styles.text, {color: colors.green}]}>Live</Text>
     </View>
   );
 }
@@ -35,10 +43,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: colors.bgCard,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.25)',
     paddingVertical: 6,
     paddingHorizontal: 14,
   },
@@ -46,11 +52,9 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.green,
   },
   text: {
     fontSize: fonts.label,
     fontWeight: '700',
-    color: colors.green,
   },
 });

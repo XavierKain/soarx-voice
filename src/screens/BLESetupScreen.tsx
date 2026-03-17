@@ -10,7 +10,8 @@ import {
   NativeEventEmitter,
   ActivityIndicator,
 } from 'react-native';
-import {colors, fonts, spacing} from '../theme';
+import {colors as defaultColors, fonts, spacing} from '../theme';
+import {useTheme} from '../contexts/ThemeContext';
 
 const {BLEButtonManager} = NativeModules;
 
@@ -25,6 +26,7 @@ interface BLESetupScreenProps {
 }
 
 export function BLESetupScreen({onDone}: BLESetupScreenProps) {
+  const {colors} = useTheme();
   const [scanning, setScanning] = useState(false);
   const [devices, setDevices] = useState<BLEDevice[]>([]);
   const [connectedDevice, setConnectedDevice] = useState<string | null>(null);
@@ -96,19 +98,19 @@ export function BLESetupScreen({onDone}: BLESetupScreenProps) {
   }, []);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, {backgroundColor: colors.bg}]}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Mute Button Setup</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.title, {color: colors.text}]}>Mute Button Setup</Text>
+        <Text style={[styles.subtitle, {color: colors.textSecondary}]}>
           Connect a BLE button to toggle mute during flight
         </Text>
 
-        <View style={styles.howItWorks}>
-          <Text style={styles.howItWorksTitle}>How it works</Text>
-          <Text style={styles.howItWorksText}>
+        <View style={[styles.howItWorks, {backgroundColor: colors.primaryLight, borderColor: colors.primaryBorder}]}>
+          <Text style={[styles.howItWorksTitle, {color: colors.primary}]}>How it works</Text>
+          <Text style={[styles.howItWorksText, {color: colors.textSecondary}]}>
             Pair a Bluetooth Low Energy button (like an iTag tracker). Press it
             to toggle mute — works even with your screen locked and phone in
             your pocket.
@@ -116,39 +118,39 @@ export function BLESetupScreen({onDone}: BLESetupScreenProps) {
         </View>
 
         {savedUUID && !showScan ? (
-          <View style={styles.connectedBox}>
-            <Text style={styles.connectedLabel}>Connected button</Text>
-            <Text style={styles.connectedName}>{connectedName || 'Saved device'}</Text>
-            <Text style={styles.connectedUUID}>{savedUUID.substring(0, 8)}...</Text>
+          <View style={[styles.connectedBox, {backgroundColor: colors.greenLight, borderColor: colors.green + '66'}]}>
+            <Text style={[styles.connectedLabel, {color: colors.textMuted}]}>Connected button</Text>
+            <Text style={[styles.connectedName, {color: colors.green}]}>{connectedName || 'Saved device'}</Text>
+            <Text style={[styles.connectedUUID, {color: colors.textMuted}]}>{savedUUID.substring(0, 8)}...</Text>
             <View style={styles.connectedButtons}>
               <TouchableOpacity
-                style={styles.changeButton}
+                style={[styles.changeButton, {backgroundColor: colors.cardBorder}]}
                 onPress={() => setShowScan(true)}
                 activeOpacity={0.7}>
-                <Text style={styles.changeButtonText}>Change</Text>
+                <Text style={[styles.changeButtonText, {color: colors.primary}]}>Change</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.forgetButton}
+                style={[styles.forgetButton, {backgroundColor: colors.redLight}]}
                 onPress={disconnectDevice}
                 activeOpacity={0.7}>
-                <Text style={styles.forgetButtonText}>Forget</Text>
+                <Text style={[styles.forgetButtonText, {color: colors.red}]}>Forget</Text>
               </TouchableOpacity>
             </View>
           </View>
         ) : (
           <View>
             <TouchableOpacity
-              style={[styles.scanButton, scanning && styles.scanButtonActive]}
+              style={[styles.scanButton, {backgroundColor: colors.primary}, scanning && styles.scanButtonActive]}
               onPress={startScan}
               disabled={scanning}
               activeOpacity={0.7}>
               {scanning ? (
                 <View style={styles.scanningRow}>
-                  <ActivityIndicator color={colors.navy} size="small" />
-                  <Text style={styles.scanButtonText}>  Scanning...</Text>
+                  <ActivityIndicator color={colors.bg} size="small" />
+                  <Text style={[styles.scanButtonText, {color: colors.bg}]}>  Scanning...</Text>
                 </View>
               ) : (
-                <Text style={styles.scanButtonText}>Scan for BLE Buttons</Text>
+                <Text style={[styles.scanButtonText, {color: colors.bg}]}>Scan for BLE Buttons</Text>
               )}
             </TouchableOpacity>
 
@@ -157,21 +159,21 @@ export function BLESetupScreen({onDone}: BLESetupScreenProps) {
                 {devices.map(device => (
                   <TouchableOpacity
                     key={device.uuid}
-                    style={styles.deviceRow}
+                    style={[styles.deviceRow, {backgroundColor: colors.bgCard, borderColor: colors.cardBorder, borderWidth: 1}]}
                     onPress={() => connectDevice(device.uuid)}
                     activeOpacity={0.7}>
                     <View style={styles.deviceInfo}>
-                      <Text style={styles.deviceName}>{device.name}</Text>
-                      <Text style={styles.deviceUUID}>{device.uuid.substring(0, 8)}...</Text>
+                      <Text style={[styles.deviceName, {color: colors.text}]}>{device.name}</Text>
+                      <Text style={[styles.deviceUUID, {color: colors.textMuted}]}>{device.uuid.substring(0, 8)}...</Text>
                     </View>
-                    <Text style={styles.deviceRSSI}>{device.rssi} dBm</Text>
+                    <Text style={[styles.deviceRSSI, {color: colors.textMuted}]}>{device.rssi} dBm</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             )}
 
             {scanning && devices.length === 0 && (
-              <Text style={styles.scanHint}>
+              <Text style={[styles.scanHint, {color: colors.textMuted}]}>
                 Press the button on your device to make it discoverable...
               </Text>
             )}
@@ -181,15 +183,15 @@ export function BLESetupScreen({onDone}: BLESetupScreenProps) {
                 style={styles.cancelButton}
                 onPress={() => setShowScan(false)}
                 activeOpacity={0.7}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={[styles.cancelButtonText, {color: colors.textMuted}]}>Cancel</Text>
               </TouchableOpacity>
             )}
           </View>
         )}
 
-        <View style={styles.tipBox}>
-          <Text style={styles.tipTitle}>Compatible buttons</Text>
-          <Text style={styles.tipText}>
+        <View style={[styles.tipBox, {backgroundColor: colors.greenLight, borderColor: colors.cardBorder, borderWidth: 1}]}>
+          <Text style={[styles.tipTitle, {color: colors.text}]}>Compatible buttons</Text>
+          <Text style={[styles.tipText, {color: colors.textSecondary}]}>
             Any BLE device with a button that sends GATT notifications:{'\n'}
             - iTag Bluetooth trackers (~7 EUR){'\n'}
             - ESP32-based custom buttons{'\n'}
@@ -202,7 +204,7 @@ export function BLESetupScreen({onDone}: BLESetupScreenProps) {
         style={styles.doneButton}
         onPress={onDone}
         activeOpacity={0.7}>
-        <Text style={styles.doneButtonText}>Back</Text>
+        <Text style={[styles.doneButtonText, {color: colors.textSecondary}]}>Back</Text>
       </TouchableOpacity>
     </View>
   );
@@ -211,7 +213,7 @@ export function BLESetupScreen({onDone}: BLESetupScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.navy,
+    backgroundColor: defaultColors.bg,
   },
   scroll: {
     flex: 1,
@@ -224,58 +226,58 @@ const styles = StyleSheet.create({
   title: {
     fontSize: fonts.title,
     fontWeight: '700',
-    color: '#fff',
+    color: defaultColors.text,
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
   subtitle: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.6)',
+    color: defaultColors.textSecondary,
     textAlign: 'center',
     marginBottom: spacing.xl,
   },
   howItWorks: {
-    backgroundColor: 'rgba(0,188,212,0.1)',
+    backgroundColor: defaultColors.primaryLight,
     borderRadius: 12,
     padding: spacing.md,
     marginBottom: spacing.xl,
     borderWidth: 1,
-    borderColor: 'rgba(0,188,212,0.3)',
+    borderColor: defaultColors.primaryBorder,
   },
   howItWorksTitle: {
-    color: colors.cyan,
+    color: defaultColors.primary,
     fontWeight: '700',
     fontSize: 15,
     marginBottom: spacing.xs,
   },
   howItWorksText: {
-    color: 'rgba(255,255,255,0.7)',
+    color: defaultColors.textSecondary,
     fontSize: 13,
     lineHeight: 20,
   },
   connectedBox: {
-    backgroundColor: 'rgba(76,175,80,0.15)',
+    backgroundColor: defaultColors.greenLight,
     borderRadius: 12,
     padding: spacing.md,
     marginBottom: spacing.xl,
     borderWidth: 1,
-    borderColor: 'rgba(76,175,80,0.4)',
+    borderColor: defaultColors.green,
   },
   connectedLabel: {
-    color: 'rgba(255,255,255,0.5)',
+    color: defaultColors.textMuted,
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   connectedName: {
-    color: '#4CAF50',
+    color: defaultColors.green,
     fontWeight: '700',
     fontSize: 18,
     marginTop: 4,
   },
   connectedUUID: {
-    color: 'rgba(255,255,255,0.4)',
+    color: defaultColors.textMuted,
     fontSize: 12,
     marginTop: 2,
   },
@@ -285,29 +287,29 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   changeButton: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: defaultColors.cardBorder,
     borderRadius: 8,
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
   changeButtonText: {
-    color: colors.cyan,
+    color: defaultColors.primary,
     fontSize: 13,
     fontWeight: '600',
   },
   forgetButton: {
-    backgroundColor: 'rgba(244,67,54,0.15)',
+    backgroundColor: defaultColors.redLight,
     borderRadius: 8,
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
   forgetButtonText: {
-    color: '#F44336',
+    color: defaultColors.red,
     fontSize: 13,
     fontWeight: '600',
   },
   scanButton: {
-    backgroundColor: colors.cyan,
+    backgroundColor: defaultColors.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
@@ -316,7 +318,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   scanButtonText: {
-    color: colors.navy,
+    color: defaultColors.bg,
     fontWeight: '700',
     fontSize: 15,
   },
@@ -331,7 +333,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: defaultColors.bgCard,
     borderRadius: 10,
     padding: spacing.md,
     marginBottom: spacing.xs,
@@ -340,21 +342,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   deviceName: {
-    color: '#fff',
+    color: defaultColors.text,
     fontWeight: '600',
     fontSize: 15,
   },
   deviceUUID: {
-    color: 'rgba(255,255,255,0.4)',
+    color: defaultColors.textMuted,
     fontSize: 11,
     marginTop: 2,
   },
   deviceRSSI: {
-    color: 'rgba(255,255,255,0.4)',
+    color: defaultColors.textMuted,
     fontSize: 12,
   },
   scanHint: {
-    color: 'rgba(255,255,255,0.4)',
+    color: defaultColors.textMuted,
     fontSize: 13,
     textAlign: 'center',
     marginTop: spacing.md,
@@ -366,23 +368,23 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   cancelButtonText: {
-    color: 'rgba(255,255,255,0.5)',
+    color: defaultColors.textMuted,
     fontSize: 14,
   },
   tipBox: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: defaultColors.greenLight,
     borderRadius: 12,
     padding: spacing.md,
     marginTop: spacing.lg,
   },
   tipTitle: {
-    color: 'rgba(255,255,255,0.7)',
+    color: defaultColors.text,
     fontWeight: '700',
     fontSize: 15,
     marginBottom: spacing.xs,
   },
   tipText: {
-    color: 'rgba(255,255,255,0.5)',
+    color: defaultColors.textSecondary,
     fontSize: 13,
     lineHeight: 22,
   },
@@ -393,7 +395,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
   },
   doneButtonText: {
-    color: 'rgba(255,255,255,0.6)',
+    color: defaultColors.textSecondary,
     fontSize: 16,
   },
 });

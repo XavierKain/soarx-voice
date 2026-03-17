@@ -7,13 +7,15 @@ import {useBluetoothHID} from '../hooks/useBluetoothHID';
 import {MuteButton} from '../components/MuteButton';
 import {PilotList} from '../components/PilotList';
 import {ChannelBadge} from '../components/ChannelBadge';
-import {colors, fonts, spacing, radius} from '../theme';
+import {useTheme} from '../contexts/ThemeContext';
+import {colors as defaultColors, fonts, spacing, radius} from '../theme';
 
 interface VoiceScreenProps {
   onLeft: () => void;
 }
 
 export function VoiceScreen({onLeft}: VoiceScreenProps) {
+  const {colors} = useTheme();
   const {channelName, remotePilots, leaveChannel, connectionState, isSpeakerOn, toggleSpeaker} = useAgoraContext();
   const {pilotName} = useUser();
   const {isMuted, toggle} = useMute();
@@ -27,15 +29,15 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, {backgroundColor: colors.bg}]}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.channelLabel}>Channel</Text>
-          <Text style={styles.channelName}>{channelName}</Text>
+          <Text style={[styles.channelLabel, {color: colors.textMuted}]}>Channel</Text>
+          <Text style={[styles.channelName, {color: colors.text}]}>{channelName}</Text>
         </View>
         <View style={styles.headerRight}>
           {connectionState === 'connected' && <ChannelBadge />}
-          {connectionState === 'reconnecting' && <Text style={styles.reconnecting}>Reconnecting...</Text>}
+          {connectionState === 'reconnecting' && <Text style={[styles.reconnecting, {color: colors.amber}]}>Reconnecting...</Text>}
         </View>
       </View>
 
@@ -47,11 +49,11 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
         <MuteButton isMuted={isMuted} onPress={toggle} />
 
         <TouchableOpacity
-          style={[styles.speakerPill, isSpeakerOn && styles.speakerPillActive]}
+          style={[styles.speakerPill, {backgroundColor: colors.bgCard, borderColor: colors.primaryBorder}, isSpeakerOn && styles.speakerPillActive]}
           onPress={toggleSpeaker}
           activeOpacity={0.7}>
           <Text style={styles.speakerIcon}>{isSpeakerOn ? '🔊' : '🔈'}</Text>
-          <Text style={[styles.speakerText, isSpeakerOn && styles.speakerTextActive]}>
+          <Text style={[styles.speakerText, {color: colors.textSecondary}, isSpeakerOn && {color: colors.primary}]}>
             {isSpeakerOn ? 'Speaker' : 'Earpiece'}
           </Text>
         </TouchableOpacity>
@@ -67,7 +69,7 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: defaultColors.bg,
     paddingTop: spacing.xxxl,
   },
   header: {
@@ -85,7 +87,7 @@ const styles = StyleSheet.create({
   },
   channelLabel: {
     fontSize: fonts.label,
-    color: colors.textMuted,
+    color: defaultColors.textMuted,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 1.5,
@@ -95,12 +97,12 @@ const styles = StyleSheet.create({
     fontSize: fonts.title,
     fontWeight: '800',
     letterSpacing: 0.5,
-    color: colors.text,
+    color: defaultColors.text,
   },
   reconnecting: {
     fontSize: fonts.label,
     fontWeight: '600',
-    color: colors.amber,
+    color: defaultColors.amber,
   },
   pilotListWrapper: {
     flex: 1,
@@ -112,17 +114,17 @@ const styles = StyleSheet.create({
   speakerPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.bgCard,
+    backgroundColor: defaultColors.bgCard,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: colors.primaryBorder,
+    borderColor: defaultColors.primaryBorder,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     marginTop: spacing.md,
   },
   speakerPillActive: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primary,
+    backgroundColor: defaultColors.primaryLight,
+    borderColor: defaultColors.primary,
   },
   speakerIcon: {
     fontSize: 16,
@@ -131,10 +133,10 @@ const styles = StyleSheet.create({
   speakerText: {
     fontSize: fonts.sm,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: defaultColors.textSecondary,
   },
   speakerTextActive: {
-    color: colors.primary,
+    color: defaultColors.primary,
   },
   leaveButton: {
     paddingVertical: spacing.md,
@@ -145,6 +147,6 @@ const styles = StyleSheet.create({
   leaveText: {
     fontSize: fonts.body,
     fontWeight: '600',
-    color: colors.red,
+    color: defaultColors.red,
   },
 });

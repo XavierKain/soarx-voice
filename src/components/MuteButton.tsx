@@ -7,18 +7,7 @@ import {
   Animated,
   Easing,
 } from 'react-native';
-
-const colors = {
-  primary: '#0EA5E9',
-  primaryGlow: 'rgba(14, 165, 233, 0.40)',
-  red: '#EF4444',
-  redGlow: 'rgba(239, 68, 68, 0.40)',
-  white: '#F8FAFC',
-  textSecondary: '#94A3B8',
-  textMuted: '#64748B',
-  bgCard: '#1E293B',
-  cyan: '#0EA5E9',
-};
+import {useTheme} from '../contexts/ThemeContext';
 
 const radius = {full: 9999};
 
@@ -30,6 +19,7 @@ interface MuteButtonProps {
 }
 
 export function MuteButton({isMuted, onPress}: MuteButtonProps) {
+  const {colors} = useTheme();
   const pulseScale = useRef(new Animated.Value(1)).current;
   const pulseOpacity = useRef(new Animated.Value(0.6)).current;
 
@@ -110,7 +100,7 @@ export function MuteButton({isMuted, onPress}: MuteButtonProps) {
       <Text style={[styles.label, {color: stateColor}]}>
         {isMuted ? 'MUTED' : 'LIVE'}
       </Text>
-      <Text style={styles.hint}>
+      <Text style={[styles.hint, {color: colors.textMuted}]}>
         {isMuted ? 'Tap to unmute' : 'Tap to mute'}
       </Text>
     </View>
@@ -165,7 +155,6 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontSize: 13,
-    color: colors.textMuted,
     marginTop: 6,
   },
 });
