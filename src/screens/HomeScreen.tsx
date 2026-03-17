@@ -103,7 +103,7 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
         <View style={styles.fieldBlock}>
           <Text style={[styles.label, {color: colors.textSecondary}]}>PILOT NAME</Text>
           <TextInput
-            style={[styles.input, {backgroundColor: colors.bgInput, borderColor: colors.cardBorder, color: defaultColors.text}]}
+            style={[styles.input, {backgroundColor: colors.bgInput, borderColor: colors.cardBorder, color: colors.text}]}
             value={pilotName}
             onChangeText={setPilotName}
             placeholder="Your name"
@@ -117,7 +117,7 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
           <Text style={[styles.label, {color: colors.textSecondary}]}>CHANNEL</Text>
           <View style={styles.channelRow}>
             <TextInput
-              style={[styles.input, styles.channelInput, {backgroundColor: colors.bgInput, borderColor: colors.cardBorder, color: defaultColors.text}]}
+              style={[styles.input, styles.channelInput, {backgroundColor: colors.bgInput, borderColor: colors.cardBorder, color: colors.text}]}
               value={channel}
               onChangeText={text => setChannel(text.toUpperCase())}
               placeholder="TARIFA-01"
