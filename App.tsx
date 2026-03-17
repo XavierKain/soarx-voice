@@ -15,7 +15,7 @@ function AppContent() {
   const [screen, setScreen] = useState<Screen>('home');
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.backgroundTop} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
       {screen === 'home' && (
         <HomeScreen
           onJoined={() => setScreen('voice')}
@@ -43,5 +43,5 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.backgroundTop },
+  container: { flex: 1, backgroundColor: colors.bg },
 });

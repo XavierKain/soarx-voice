@@ -7,7 +7,7 @@ import {useBluetoothHID} from '../hooks/useBluetoothHID';
 import {MuteButton} from '../components/MuteButton';
 import {PilotList} from '../components/PilotList';
 import {ChannelBadge} from '../components/ChannelBadge';
-import {colors, fonts, spacing} from '../theme';
+import {colors, fonts, spacing, radius} from '../theme';
 
 interface VoiceScreenProps {
   onLeft: () => void;
@@ -29,18 +29,25 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerLeft}>
           <Text style={styles.channelLabel}>Channel</Text>
           <Text style={styles.channelName}>{channelName}</Text>
         </View>
-        {connectionState === 'connected' && <ChannelBadge />}
-        {connectionState === 'reconnecting' && <Text style={styles.reconnecting}>Reconnecting...</Text>}
+        <View style={styles.headerRight}>
+          {connectionState === 'connected' && <ChannelBadge />}
+          {connectionState === 'reconnecting' && <Text style={styles.reconnecting}>Reconnecting...</Text>}
+        </View>
       </View>
-      <PilotList remotePilots={remotePilots} localPilotName={pilotName} isMuted={isMuted} />
+
+      <View style={styles.pilotListWrapper}>
+        <PilotList remotePilots={remotePilots} localPilotName={pilotName} isMuted={isMuted} />
+      </View>
+
       <View style={styles.controls}>
         <MuteButton isMuted={isMuted} onPress={toggle} />
+
         <TouchableOpacity
-          style={[styles.speakerButton, isSpeakerOn && styles.speakerButtonActive]}
+          style={[styles.speakerPill, isSpeakerOn && styles.speakerPillActive]}
           onPress={toggleSpeaker}
           activeOpacity={0.7}>
           <Text style={styles.speakerIcon}>{isSpeakerOn ? '🔊' : '🔈'}</Text>
@@ -49,7 +56,8 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
           </Text>
         </TouchableOpacity>
       </View>
-      <TouchableOpacity style={styles.leaveButton} onPress={handleLeave}>
+
+      <TouchableOpacity style={styles.leaveButton} onPress={handleLeave} activeOpacity={0.6}>
         <Text style={styles.leaveText}>Leave Flight</Text>
       </TouchableOpacity>
     </View>
@@ -57,25 +65,86 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: spacing.xxxl },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingBottom: spacing.lg },
-  channelLabel: { fontSize: 14, color: colors.textSecondary, fontWeight: '600' },
-  channelName: { fontSize: fonts.title, fontWeight: '800', letterSpacing: 1, color: colors.navy },
-  reconnecting: { fontSize: fonts.label, fontWeight: '600', color: '#ff9800' },
-  controls: { alignItems: 'center' },
-  speakerButton: {
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    paddingTop: spacing.xxxl,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.lg,
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  headerRight: {
+    marginLeft: spacing.md,
+  },
+  channelLabel: {
+    fontSize: fonts.label,
+    color: colors.textMuted,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    marginBottom: spacing.xs,
+  },
+  channelName: {
+    fontSize: fonts.title,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    color: colors.text,
+  },
+  reconnecting: {
+    fontSize: fonts.label,
+    fontWeight: '600',
+    color: colors.amber,
+  },
+  pilotListWrapper: {
+    flex: 1,
+  },
+  controls: {
+    alignItems: 'center',
+    paddingBottom: spacing.lg,
+  },
+  speakerPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
     marginTop: spacing.md,
   },
-  speakerButtonActive: { backgroundColor: 'rgba(0,188,212,0.15)' },
-  speakerIcon: { fontSize: 18, marginRight: 6 },
-  speakerText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
-  speakerTextActive: { color: colors.cyan },
-  leaveButton: { padding: spacing.md, marginBottom: spacing.xxl },
-  leaveText: { textAlign: 'center', fontSize: 15, fontWeight: '600', color: colors.red },
+  speakerPillActive: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+  },
+  speakerIcon: {
+    fontSize: 16,
+    marginRight: spacing.sm,
+  },
+  speakerText: {
+    fontSize: fonts.sm,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  speakerTextActive: {
+    color: colors.primary,
+  },
+  leaveButton: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.xxl,
+    alignSelf: 'center',
+  },
+  leaveText: {
+    fontSize: fonts.body,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
 });

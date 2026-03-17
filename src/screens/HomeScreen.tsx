@@ -1,10 +1,10 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Alert, Platform, PermissionsAndroid} from 'react-native';
+import {View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Alert, Platform, PermissionsAndroid, StatusBar} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useUser} from '../contexts/UserContext';
 import {generateChannelName, isValidChannelName} from '../utils/channelGenerator';
 import {useAgoraContext} from '../contexts/AgoraContext';
-import {colors, fonts, spacing} from '../theme';
+import {colors, fonts, spacing, radius} from '../theme';
 
 const FAVORITES_KEY = '@soarx_favorite_channels';
 const DEFAULT_CHANNEL = 'TARIFA-01';
@@ -80,26 +80,54 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+
       <View style={styles.titleBlock}>
-        <Text style={styles.title}>SOAR<Text style={styles.titleX}>X</Text></Text>
+        <Text style={styles.title}>
+          SOAR
+          <Text style={styles.titleX}>X</Text>
+        </Text>
         <Text style={styles.subtitle}>VOICE</Text>
       </View>
-      <View style={styles.fieldBlock}>
-        <Text style={styles.label}>PILOT NAME</Text>
-        <TextInput style={styles.input} value={pilotName} onChangeText={setPilotName} placeholder="Your name" placeholderTextColor={colors.textTertiary} autoCapitalize="words" returnKeyType="next" />
-      </View>
-      <View style={styles.fieldBlock}>
-        <Text style={styles.label}>CHANNEL</Text>
-        <View style={styles.channelRow}>
-          <TextInput style={[styles.input, styles.channelInput]} value={channel} onChangeText={text => setChannel(text.toUpperCase())} placeholder="TARIFA-01" placeholderTextColor={colors.textTertiary} autoCapitalize="characters" maxLength={30} returnKeyType="done" />
-          <TouchableOpacity style={styles.favButton} onPress={toggleFavorite}>
-            <Text style={styles.favIcon}>{isFavorite ? '★' : '☆'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.generateButton} onPress={handleGenerateChannel}>
-            <Text style={styles.generateIcon}>🎲</Text>
-          </TouchableOpacity>
+
+      <View style={styles.card}>
+        <View style={styles.fieldBlock}>
+          <Text style={styles.label}>PILOT NAME</Text>
+          <TextInput
+            style={styles.input}
+            value={pilotName}
+            onChangeText={setPilotName}
+            placeholder="Your name"
+            placeholderTextColor={colors.textDim}
+            autoCapitalize="words"
+            returnKeyType="next"
+          />
         </View>
-        <Text style={styles.hint}>Share this code with your group</Text>
+
+        <View style={styles.fieldBlock}>
+          <Text style={styles.label}>CHANNEL</Text>
+          <View style={styles.channelRow}>
+            <TextInput
+              style={[styles.input, styles.channelInput]}
+              value={channel}
+              onChangeText={text => setChannel(text.toUpperCase())}
+              placeholder="TARIFA-01"
+              placeholderTextColor={colors.textDim}
+              autoCapitalize="characters"
+              maxLength={30}
+              returnKeyType="done"
+            />
+            <TouchableOpacity style={styles.iconButton} onPress={toggleFavorite} activeOpacity={0.7}>
+              <Text style={[styles.iconButtonText, isFavorite && styles.iconButtonTextActive]}>
+                {isFavorite ? '\u2605' : '\u2606'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.iconButton} onPress={handleGenerateChannel} activeOpacity={0.7}>
+              <Text style={styles.iconButtonText}>{'\uD83C\uDFB2'}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.hint}>Share this code with your group</Text>
+        </View>
       </View>
 
       {favorites.length > 0 && (
@@ -123,44 +151,197 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
       )}
 
       <View style={styles.spacer} />
-      <TouchableOpacity style={[styles.joinButton, !canJoin && styles.joinButtonDisabled]} onPress={handleJoin} disabled={!canJoin || isJoining} activeOpacity={0.8}>
+
+      <TouchableOpacity
+        style={[styles.joinButton, !canJoin && styles.joinButtonDisabled]}
+        onPress={handleJoin}
+        disabled={!canJoin || isJoining}
+        activeOpacity={0.8}>
         <Text style={styles.joinText}>{isJoining ? 'Connecting...' : 'Join Flight'}</Text>
       </TouchableOpacity>
+
       <TouchableOpacity style={styles.bleButton} onPress={onBLESetup} activeOpacity={0.7}>
         <Text style={styles.bleButtonText}>Mute Button Setup</Text>
       </TouchableOpacity>
+
       <Text style={styles.version}>v0.1.0</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: spacing.xxl, paddingTop: spacing.xxxl + 20, paddingBottom: spacing.xxl },
-  titleBlock: { alignItems: 'center', marginBottom: 48 },
-  title: { fontSize: fonts.logo, fontWeight: '800', letterSpacing: 2, color: colors.navy },
-  titleX: { color: colors.cyan },
-  subtitle: { fontSize: 16, color: colors.cyan, marginTop: 4, letterSpacing: 4, fontWeight: '600' },
-  fieldBlock: { marginBottom: spacing.lg },
-  label: { fontSize: fonts.label, color: colors.textSecondary, letterSpacing: 1, fontWeight: '600', marginBottom: spacing.sm },
-  input: { backgroundColor: colors.white, borderWidth: 2, borderColor: colors.cyanBorder, borderRadius: 12, padding: spacing.lg, fontSize: fonts.input, color: colors.navy, fontWeight: '500' },
-  channelRow: { flexDirection: 'row', gap: 10 },
-  channelInput: { flex: 1 },
-  favButton: { backgroundColor: colors.cyanLight, borderWidth: 2, borderColor: 'rgba(0, 188, 212, 0.25)', borderRadius: 12, padding: spacing.lg, alignItems: 'center', justifyContent: 'center', minWidth: 56 },
-  favIcon: { fontSize: 20, color: colors.cyan },
-  generateButton: { backgroundColor: colors.cyanLight, borderWidth: 2, borderColor: 'rgba(0, 188, 212, 0.25)', borderRadius: 12, padding: spacing.lg, alignItems: 'center', justifyContent: 'center', minWidth: 56 },
-  generateIcon: { fontSize: 20 },
-  hint: { fontSize: fonts.small, color: colors.textTertiary, marginTop: spacing.sm },
-  favoritesBlock: { marginBottom: spacing.md },
-  favoritesLabel: { fontSize: fonts.label, color: colors.textSecondary, letterSpacing: 1, fontWeight: '600', marginBottom: spacing.xs },
-  favChip: { backgroundColor: 'rgba(0, 188, 212, 0.08)', borderWidth: 1, borderColor: 'rgba(0, 188, 212, 0.2)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8 },
-  favChipActive: { backgroundColor: colors.cyan, borderColor: colors.cyan },
-  favChipText: { fontSize: 13, fontWeight: '600', color: colors.cyan },
-  favChipTextActive: { color: colors.white },
-  spacer: { flex: 1 },
-  joinButton: { backgroundColor: colors.cyan, borderRadius: 16, padding: spacing.xl, alignItems: 'center', shadowColor: colors.cyan, shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 6 },
-  joinButtonDisabled: { opacity: 0.4, shadowOpacity: 0, elevation: 0 },
-  joinText: { fontSize: fonts.button, fontWeight: '700', color: colors.white, letterSpacing: 0.5 },
-  bleButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignSelf: 'center', marginTop: spacing.md },
-  bleButtonText: { color: colors.cyan, fontSize: 14, textDecorationLine: 'underline' },
-  version: { textAlign: 'center', marginTop: spacing.lg, fontSize: 11, color: 'rgba(26, 39, 68, 0.2)' },
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    paddingHorizontal: spacing.xxl,
+    paddingTop: spacing.xxxl + 20,
+    paddingBottom: spacing.xxl,
+  },
+
+  // --- Title / Logo ---
+  titleBlock: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  title: {
+    fontSize: 44,
+    fontWeight: '800',
+    letterSpacing: 4,
+    color: colors.text,
+  },
+  titleX: {
+    color: colors.primary,
+    textShadowColor: colors.primaryGlow,
+    textShadowOffset: {width: 0, height: 0},
+    textShadowRadius: 18,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: colors.primary,
+    marginTop: 2,
+    letterSpacing: 8,
+    fontWeight: '600',
+  },
+
+  // --- Card wrapper ---
+  card: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    padding: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+
+  // --- Fields ---
+  fieldBlock: {
+    marginBottom: spacing.lg,
+  },
+  label: {
+    fontSize: fonts.label,
+    color: colors.textSecondary,
+    letterSpacing: 1.5,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+  },
+  input: {
+    backgroundColor: colors.bgInput,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    fontSize: fonts.input,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  channelRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  channelInput: {
+    flex: 1,
+  },
+  iconButton: {
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 52,
+  },
+  iconButtonText: {
+    fontSize: 20,
+    color: colors.primary,
+  },
+  iconButtonTextActive: {
+    color: colors.primary,
+    textShadowColor: colors.primaryGlow,
+    textShadowOffset: {width: 0, height: 0},
+    textShadowRadius: 8,
+  },
+  hint: {
+    fontSize: fonts.small,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+  },
+
+  // --- Favorites ---
+  favoritesBlock: {
+    marginBottom: spacing.md,
+  },
+  favoritesLabel: {
+    fontSize: fonts.label,
+    color: colors.textSecondary,
+    letterSpacing: 1.5,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+  },
+  favChip: {
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    borderRadius: radius.full,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+  },
+  favChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  favChipText: {
+    fontSize: fonts.sm,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  favChipTextActive: {
+    color: colors.white,
+  },
+
+  // --- Bottom area ---
+  spacer: {
+    flex: 1,
+  },
+  joinButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+    shadowColor: colors.primary,
+    shadowOffset: {width: 0, height: 6},
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  joinButtonDisabled: {
+    opacity: 0.35,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  joinText: {
+    fontSize: fonts.button,
+    fontWeight: '700',
+    color: colors.white,
+    letterSpacing: 0.5,
+  },
+  bleButton: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    alignSelf: 'center',
+    marginTop: spacing.md,
+  },
+  bleButtonText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '500',
+    textDecorationLine: 'underline',
+  },
+  version: {
+    textAlign: 'center',
+    marginTop: spacing.lg,
+    fontSize: fonts.xs,
+    color: colors.textDim,
+  },
 });

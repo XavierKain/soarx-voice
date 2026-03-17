@@ -1,11 +1,30 @@
-import React from 'react';
-import {View, Text, StyleSheet} from 'react-native';
-import {colors, fonts} from '../theme';
+import React, {useEffect, useRef} from 'react';
+import {Animated, StyleSheet, Text, View} from 'react-native';
+import {colors, fonts, radius} from '../theme';
 
 export function ChannelBadge() {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 0.3,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start();
+  }, [pulseAnim]);
+
   return (
     <View style={styles.container}>
-      <View style={styles.dot} />
+      <Animated.View style={[styles.dot, {opacity: pulseAnim}]} />
       <Text style={styles.text}>Live</Text>
     </View>
   );
@@ -16,8 +35,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(0, 200, 83, 0.12)',
-    borderRadius: 20,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.25)',
     paddingVertical: 6,
     paddingHorizontal: 14,
   },
