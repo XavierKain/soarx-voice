@@ -1,4 +1,4 @@
-import React, {createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode} from 'react';
+import React, {createContext, useContext, useState, useCallback, useRef, ReactNode} from 'react';
 import createAgoraRtcEngine, {
   IRtcEngine,
   ChannelProfileType,
@@ -8,9 +8,6 @@ import createAgoraRtcEngine, {
 } from 'react-native-agora';
 import {AGORA_APP_ID} from '@env';
 import {Pilot, ConnectionState, ChannelConfig} from '../types';
-// CallKit disabled: it intercepts Bluetooth HID button events during active calls
-// Background audio is maintained via UIBackgroundModes (audio, voip) in Info.plist
-// import {setupCallKit, startCallKitSession, endCallKitSession} from '../services/CallKitService';
 import {startForegroundService, stopForegroundService, updateForegroundMuteStatus} from '../services/AndroidForegroundService';
 
 interface AgoraContextValue {
@@ -29,6 +26,8 @@ const AgoraContext = createContext<AgoraContextValue | null>(null);
 
 export function AgoraProvider({children}: {children: ReactNode}) {
   const engineRef = useRef<IRtcEngine | null>(null);
+  const dataStreamIdRef = useRef<number | null>(null);
+  const pilotNameRef = useRef('');
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [remotePilots, setRemotePilots] = useState<Pilot[]>([]);
   const [isMuted, setIsMuted] = useState(false);
@@ -37,9 +36,22 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   const isMutedRef = useRef(false);
   const channelNameRef = useRef('');
 
-  // useEffect(() => { setupCallKit(); }, []);
+  // Send pilot name to all users in the channel via data stream
+  const broadcastName = useCallback((engine: IRtcEngine) => {
+    try {
+      if (dataStreamIdRef.current === null) {
+        const streamId = engine.createDataStream({syncWithAudio: false, ordered: true});
+        dataStreamIdRef.current = streamId;
+      }
+      const msg = JSON.stringify({type: 'name', name: pilotNameRef.current});
+      const encoder = new TextEncoder();
+      const data = encoder.encode(msg);
+      engine.sendStreamMessage(dataStreamIdRef.current!, data, data.length);
+    } catch (e) {
+      console.warn('[Agora] broadcastName error:', e);
+    }
+  }, []);
 
-  // Initialise le moteur Agora RTC avec le profil audio optimisé pour les communications
   const initEngine = useCallback(async () => {
     if (engineRef.current) {
       return engineRef.current;
@@ -53,22 +65,34 @@ export function AgoraProvider({children}: {children: ReactNode}) {
       AudioScenarioType.AudioScenarioChatroom,
     );
 
-    // Ajout d'un pilote distant à la liste lors de sa connexion
+    // Remote user joined — add with temporary name, then broadcast our name
     engine.addListener('onUserJoined', (connection, remoteUid) => {
       setRemotePilots(prev => {
-        if (prev.find(p => p.uid === remoteUid)) {
-          return prev;
-        }
-        return [...prev, {uid: remoteUid, name: `Pilot ${remoteUid}`, status: 'listening', audioVolume: 0}];
+        if (prev.find(p => p.uid === remoteUid)) return prev;
+        return [...prev, {uid: remoteUid, name: `Pilot`, status: 'listening', audioVolume: 0}];
       });
+      // Re-broadcast our name so the new user learns it
+      setTimeout(() => broadcastName(engine), 500);
     });
 
-    // Suppression d'un pilote distant de la liste lors de sa déconnexion
     engine.addListener('onUserOffline', (connection, remoteUid) => {
       setRemotePilots(prev => prev.filter(p => p.uid !== remoteUid));
     });
 
-    // Mise à jour du volume audio et du statut des pilotes distants
+    // Receive data stream messages (pilot names)
+    engine.addListener('onStreamMessage', (connection, remoteUid, streamId, data) => {
+      try {
+        const decoder = new TextDecoder();
+        const text = decoder.decode(data as ArrayBuffer);
+        const msg = JSON.parse(text);
+        if (msg.type === 'name' && msg.name) {
+          setRemotePilots(prev =>
+            prev.map(p => p.uid === remoteUid ? {...p, name: msg.name} : p),
+          );
+        }
+      } catch {}
+    });
+
     engine.addListener('onAudioVolumeIndication', (connection, speakers, totalVolume) => {
       setRemotePilots(prev =>
         prev.map(pilot => {
@@ -86,7 +110,6 @@ export function AgoraProvider({children}: {children: ReactNode}) {
       );
     });
 
-    // Suivi de l'état de connexion au canal
     engine.addListener('onConnectionStateChanged', (connection, state) => {
       const stateMap: Record<number, ConnectionState> = {
         1: 'disconnected',
@@ -100,31 +123,32 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     engine.enableAudioVolumeIndication(250, 3, true);
     engineRef.current = engine;
     return engine;
-  }, []);
+  }, [broadcastName]);
 
-  // Rejoindre un canal audio avec la configuration fournie
   const joinChannel = useCallback(async (config: ChannelConfig) => {
     setConnectionState('connecting');
     setChannelName(config.channelName);
     channelNameRef.current = config.channelName;
+    pilotNameRef.current = config.pilotName;
     setRemotePilots([]);
     setIsMuted(false);
     isMutedRef.current = false;
+    dataStreamIdRef.current = null;
 
     const engine = await initEngine();
     engine.joinChannel('', config.channelName, 0, {});
     engine.muteLocalAudioStream(false);
-    // startCallKitSession(config.channelName);
     startForegroundService(config.channelName);
-  }, [initEngine]);
 
-  // Quitter le canal audio et réinitialiser l'état
+    // Broadcast our name after joining (with delay to let connection settle)
+    setTimeout(() => broadcastName(engine), 1500);
+  }, [initEngine, broadcastName]);
+
   const leaveChannel = useCallback(async () => {
     const engine = engineRef.current;
     if (engine) {
       engine.leaveChannel();
     }
-    // endCallKitSession();
     stopForegroundService();
     setConnectionState('disconnected');
     setRemotePilots([]);
@@ -132,6 +156,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     channelNameRef.current = '';
     setIsMuted(false);
     isMutedRef.current = false;
+    dataStreamIdRef.current = null;
   }, []);
 
   const toggleMute = useCallback(() => {
