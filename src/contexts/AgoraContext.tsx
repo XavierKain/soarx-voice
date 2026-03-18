@@ -1,4 +1,4 @@
-import React, {createContext, useContext, useState, useCallback, useRef, ReactNode} from 'react';
+import React, {createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode} from 'react';
 import createAgoraRtcEngine, {
   IRtcEngine,
   ChannelProfileType,
@@ -10,6 +10,8 @@ import {AGORA_APP_ID} from '@env';
 import {Pilot, ConnectionState, ChannelConfig} from '../types';
 import {startForegroundService, stopForegroundService, updateForegroundMuteStatus} from '../services/AndroidForegroundService';
 
+export type InactivityWarning = null | 'solo' | 'silence';
+
 interface AgoraContextValue {
   connectionState: ConnectionState;
   remotePilots: Pilot[];
@@ -20,6 +22,10 @@ interface AgoraContextValue {
   toggleMute: () => void;
   toggleSpeaker: () => void;
   channelName: string;
+  inactivityWarning: InactivityWarning;
+  warningSecondsLeft: number;
+  dismissWarning: () => void;
+  autoDisconnected: boolean;
 }
 
 const AgoraContext = createContext<AgoraContextValue | null>(null);
@@ -35,6 +41,40 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   const [channelName, setChannelName] = useState('');
   const isMutedRef = useRef(false);
   const channelNameRef = useRef('');
+  const leaveChannelRef = useRef<() => Promise<void>>(async () => {});
+
+  // Inactivity guard
+  const SOLO_TIMEOUT = 5 * 60 * 1000;      // 5 min alone → warning
+  const SOLO_GRACE = 2 * 60 * 1000;         // 2 min grace after solo warning
+  const SILENCE_TIMEOUT = 60 * 60 * 1000;   // 1h no audio → warning
+  const SILENCE_GRACE = 5 * 60 * 1000;      // 5 min grace after silence warning
+  const CHECK_INTERVAL = 1000;               // check every 1s for accurate countdown
+
+  const lastActivityRef = useRef<number>(Date.now());
+  const aloneStartRef = useRef<number | null>(null);
+  const warningStartRef = useRef<number | null>(null);
+  const inactivityTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const remotePilotsRef = useRef<Pilot[]>([]);
+  const [inactivityWarning, setInactivityWarning] = useState<InactivityWarning>(null);
+  const inactivityWarningRef = useRef<InactivityWarning>(null);
+  const [warningSecondsLeft, setWarningSecondsLeft] = useState(0);
+  const [autoDisconnected, setAutoDisconnected] = useState(false);
+
+  const resetActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+    if (inactivityWarningRef.current) {
+      warningStartRef.current = null;
+      inactivityWarningRef.current = null;
+      setInactivityWarning(null);
+      setWarningSecondsLeft(0);
+    }
+  }, []);
+
+  const dismissWarning = useCallback(() => {
+    resetActivity();
+    // Also reset alone timer so solo doesn't re-trigger immediately
+    aloneStartRef.current = remotePilotsRef.current.length === 0 ? Date.now() : null;
+  }, [resetActivity]);
 
   // Encode string to Uint8Array (Hermes-compatible, no TextEncoder needed)
   const strToBytes = (str: string): Uint8Array => {
@@ -82,14 +122,27 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     engine.addListener('onUserJoined', (connection, remoteUid) => {
       setRemotePilots(prev => {
         if (prev.find(p => p.uid === remoteUid)) return prev;
-        return [...prev, {uid: remoteUid, name: `Pilot`, status: 'listening', audioVolume: 0}];
+        const updated = [...prev, {uid: remoteUid, name: `Pilot`, status: 'listening' as const, audioVolume: 0}];
+        remotePilotsRef.current = updated;
+        return updated;
       });
+      // Someone joined → reset activity & no longer alone
+      aloneStartRef.current = null;
+      resetActivity();
       // Re-broadcast our name so the new user learns it
       setTimeout(() => broadcastName(engine), 500);
     });
 
     engine.addListener('onUserOffline', (connection, remoteUid) => {
-      setRemotePilots(prev => prev.filter(p => p.uid !== remoteUid));
+      setRemotePilots(prev => {
+        const updated = prev.filter(p => p.uid !== remoteUid);
+        remotePilotsRef.current = updated;
+        // If now alone, start tracking
+        if (updated.length === 0) {
+          aloneStartRef.current = Date.now();
+        }
+        return updated;
+      });
     });
 
     // Receive data stream messages (pilot names)
@@ -109,6 +162,18 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     });
 
     engine.addListener('onAudioVolumeIndication', (connection, speakers, totalVolume) => {
+      // Detect any audio activity (someone speaking) → reset inactivity
+      const hasActivity = speakers.some(s => (s.volume ?? 0) > 30);
+      if (hasActivity) {
+        lastActivityRef.current = Date.now();
+        if (inactivityWarningRef.current === 'silence') {
+          warningStartRef.current = null;
+          inactivityWarningRef.current = null;
+          setInactivityWarning(null);
+          setWarningSecondsLeft(0);
+        }
+      }
+
       setRemotePilots(prev =>
         prev.map(pilot => {
           const speaker = speakers.find(s => s.uid === pilot.uid);
@@ -138,14 +203,80 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     engine.enableAudioVolumeIndication(250, 3, true);
     engineRef.current = engine;
     return engine;
-  }, [broadcastName]);
+  }, [broadcastName, resetActivity]);
+
+  const stopInactivityTimer = () => {
+    if (inactivityTimerRef.current) {
+      clearInterval(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+    warningStartRef.current = null;
+    inactivityWarningRef.current = null;
+    setInactivityWarning(null);
+    setWarningSecondsLeft(0);
+  };
+
+  const startInactivityTimer = () => {
+    stopInactivityTimer();
+    lastActivityRef.current = Date.now();
+    aloneStartRef.current = Date.now(); // start alone until someone joins
+    warningStartRef.current = null;
+    inactivityWarningRef.current = null;
+    setInactivityWarning(null);
+    setWarningSecondsLeft(0);
+
+    inactivityTimerRef.current = setInterval(() => {
+      const now = Date.now();
+      const pilotCount = remotePilotsRef.current.length;
+      const currentWarning = inactivityWarningRef.current;
+
+      // If warning is active, check grace period
+      if (currentWarning && warningStartRef.current) {
+        const grace = currentWarning === 'solo' ? SOLO_GRACE : SILENCE_GRACE;
+        const elapsed = now - warningStartRef.current;
+        const remaining = Math.max(0, Math.ceil((grace - elapsed) / 1000));
+        setWarningSecondsLeft(remaining);
+        if (elapsed >= grace) {
+          // Grace expired → auto-disconnect
+          console.log('[Agora] Inactivity auto-disconnect:', currentWarning);
+          setAutoDisconnected(true);
+          leaveChannelRef.current();
+          return;
+        }
+        return;
+      }
+
+      // Check solo: alone for more than SOLO_TIMEOUT
+      if (pilotCount === 0 && aloneStartRef.current) {
+        if (now - aloneStartRef.current >= SOLO_TIMEOUT) {
+          console.log('[Agora] Solo timeout reached, showing warning');
+          warningStartRef.current = now;
+          inactivityWarningRef.current = 'solo';
+          setInactivityWarning('solo');
+          setWarningSecondsLeft(Math.ceil(SOLO_GRACE / 1000));
+          return;
+        }
+      }
+
+      // Check silence: no audio activity for SILENCE_TIMEOUT
+      if (pilotCount > 0 && now - lastActivityRef.current >= SILENCE_TIMEOUT) {
+        console.log('[Agora] Silence timeout reached, showing warning');
+        warningStartRef.current = now;
+        inactivityWarningRef.current = 'silence';
+        setInactivityWarning('silence');
+        setWarningSecondsLeft(Math.ceil(SILENCE_GRACE / 1000));
+      }
+    }, CHECK_INTERVAL);
+  };
 
   const joinChannel = useCallback(async (config: ChannelConfig) => {
     setConnectionState('connecting');
+    setAutoDisconnected(false);
     setChannelName(config.channelName);
     channelNameRef.current = config.channelName;
     pilotNameRef.current = config.pilotName;
     setRemotePilots([]);
+    remotePilotsRef.current = [];
     setIsMuted(false);
     isMutedRef.current = false;
     dataStreamIdRef.current = null;
@@ -154,6 +285,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     engine.joinChannel('', config.channelName, 0, {});
     engine.muteLocalAudioStream(false);
     startForegroundService(config.channelName);
+    startInactivityTimer();
 
     // Broadcast our name multiple times after joining (reliability)
     setTimeout(() => broadcastName(engine), 1000);
@@ -162,6 +294,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   }, [initEngine, broadcastName]);
 
   const leaveChannel = useCallback(async () => {
+    stopInactivityTimer();
     const engine = engineRef.current;
     if (engine) {
       engine.leaveChannel();
@@ -169,12 +302,16 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     stopForegroundService();
     setConnectionState('disconnected');
     setRemotePilots([]);
+    remotePilotsRef.current = [];
     setChannelName('');
     channelNameRef.current = '';
     setIsMuted(false);
     isMutedRef.current = false;
     dataStreamIdRef.current = null;
   }, []);
+
+  // Keep ref in sync so the inactivity timer can call leaveChannel without circular deps
+  leaveChannelRef.current = leaveChannel;
 
   const toggleMute = useCallback(() => {
     const engine = engineRef.current;
@@ -184,8 +321,10 @@ export function AgoraProvider({children}: {children: ReactNode}) {
       isMutedRef.current = newMuted;
       setIsMuted(newMuted);
       updateForegroundMuteStatus(newMuted, channelNameRef.current);
+      // Any mute/unmute action = user is active → reset inactivity
+      resetActivity();
     }
-  }, []);
+  }, [resetActivity]);
 
   const toggleSpeaker = useCallback(() => {
     const engine = engineRef.current;
@@ -208,6 +347,10 @@ export function AgoraProvider({children}: {children: ReactNode}) {
         toggleMute,
         toggleSpeaker,
         channelName,
+        inactivityWarning,
+        warningSecondsLeft,
+        dismissWarning,
+        autoDisconnected,
       }}>
       {children}
     </AgoraContext.Provider>

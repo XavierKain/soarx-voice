@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Alert, Platform, PermissionsAndroid, StatusBar} from 'react-native';
+import {View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Alert, Platform, PermissionsAndroid, StatusBar, Keyboard, TouchableWithoutFeedback} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useUser} from '../contexts/UserContext';
 import {generateChannelName, isValidChannelName} from '../utils/channelGenerator';
@@ -81,6 +81,7 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
   };
 
   return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={[styles.container, {backgroundColor: colors.bg}]}>
       <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bg} />
 
@@ -175,6 +176,7 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
 
       <Text style={styles.version}>v0.1.0</Text>
     </View>
+    </TouchableWithoutFeedback>
   );
 }
 

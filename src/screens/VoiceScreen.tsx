@@ -1,5 +1,6 @@
-import React from 'react';
-import {View, Text, TouchableOpacity, StyleSheet, Alert} from 'react-native';
+import React, {useEffect, useRef} from 'react';
+import {View, Text, TouchableOpacity, StyleSheet, Alert, Vibration, Platform} from 'react-native';
+import Sound from 'react-native-sound';
 import {useAgoraContext} from '../contexts/AgoraContext';
 import {useUser} from '../contexts/UserContext';
 import {useMute} from '../hooks/useMute';
@@ -10,22 +11,67 @@ import {ChannelBadge} from '../components/ChannelBadge';
 import {useTheme} from '../contexts/ThemeContext';
 import {colors as defaultColors, fonts, spacing, radius} from '../theme';
 
+Sound.setCategory('Playback');
+
 interface VoiceScreenProps {
   onLeft: () => void;
 }
 
 export function VoiceScreen({onLeft}: VoiceScreenProps) {
   const {colors} = useTheme();
-  const {channelName, remotePilots, leaveChannel, connectionState, isSpeakerOn, toggleSpeaker} = useAgoraContext();
+  const {channelName, remotePilots, leaveChannel, connectionState, isSpeakerOn, toggleSpeaker, inactivityWarning, warningSecondsLeft, dismissWarning, autoDisconnected} = useAgoraContext();
   const {pilotName} = useUser();
   const {isMuted, toggle} = useMute();
   useBluetoothHID(toggle);
+  const warningAudioRef = useRef<Sound | null>(null);
+  const audioPlayedRef = useRef(false);
+
+  // Play audio warning for silence timeout
+  useEffect(() => {
+    if (inactivityWarning === 'silence' && !audioPlayedRef.current) {
+      audioPlayedRef.current = true;
+      try {
+        Vibration.vibrate(Platform.OS === 'ios' ? 500 : 1000);
+      } catch {}
+      const sound = new Sound('inactivity_warning.mp3', Sound.MAIN_BUNDLE, (error) => {
+        if (!error) {
+          sound.play(() => sound.release());
+          warningAudioRef.current = sound;
+        }
+      });
+    } else if (inactivityWarning === 'solo') {
+      try {
+        Vibration.vibrate(Platform.OS === 'ios' ? 500 : 1000);
+      } catch {}
+    }
+    if (!inactivityWarning) {
+      audioPlayedRef.current = false;
+      if (warningAudioRef.current) {
+        warningAudioRef.current.stop();
+        warningAudioRef.current.release();
+        warningAudioRef.current = null;
+      }
+    }
+  }, [inactivityWarning]);
+
+  // Auto-navigate home when auto-disconnected
+  useEffect(() => {
+    if (autoDisconnected) {
+      onLeft();
+    }
+  }, [autoDisconnected, onLeft]);
 
   const handleLeave = () => {
     Alert.alert('Leave Flight', 'Are you sure you want to leave this channel?', [
       {text: 'Cancel', style: 'cancel'},
       { text: 'Leave', style: 'destructive', onPress: async () => { await leaveChannel(); onLeft(); } },
     ]);
+  };
+
+  const formatCountdown = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -41,6 +87,22 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
         </View>
       </View>
 
+      {inactivityWarning && (
+        <View style={[styles.warningBanner, {backgroundColor: colors.amber + '20', borderColor: colors.amber}]}>
+          <Text style={[styles.warningText, {color: colors.amber}]}>
+            {inactivityWarning === 'solo'
+              ? `You're alone. Disconnecting in ${formatCountdown(warningSecondsLeft)}`
+              : `No activity. Disconnecting in ${formatCountdown(warningSecondsLeft)}`}
+          </Text>
+          <TouchableOpacity
+            style={[styles.stayButton, {backgroundColor: colors.amber}]}
+            onPress={dismissWarning}
+            activeOpacity={0.7}>
+            <Text style={styles.stayButtonText}>Stay Connected</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.pilotListWrapper}>
         <PilotList remotePilots={remotePilots} localPilotName={pilotName} isMuted={isMuted} />
       </View>
@@ -54,7 +116,7 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
           activeOpacity={0.7}>
           <Text style={styles.speakerIcon}>{isSpeakerOn ? '🔊' : '🔈'}</Text>
           <Text style={[styles.speakerText, {color: colors.textSecondary}, isSpeakerOn && {color: colors.primary}]}>
-            {isSpeakerOn ? 'Speaker' : 'Earpiece'}
+            {isSpeakerOn ? 'Speaker' : 'Speaker'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -148,5 +210,30 @@ const styles = StyleSheet.create({
     fontSize: fonts.body,
     fontWeight: '600',
     color: defaultColors.red,
+  },
+  warningBanner: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  warningText: {
+    fontSize: fonts.sm,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  stayButton: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.full,
+  },
+  stayButtonText: {
+    fontSize: fonts.sm,
+    fontWeight: '700',
+    color: '#000',
   },
 });
