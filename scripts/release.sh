@@ -12,7 +12,7 @@ cd "$PROJECT_DIR"
 # --- Config (App Store Connect API) ---
 ASC_KEY_ID="${ASC_KEY_ID:-}"
 ASC_ISSUER_ID="${ASC_ISSUER_ID:-}"
-ASC_KEY_PATH="${ASC_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_73PNP8Z93X.p8}"
+ASC_KEY_PATH="${ASC_KEY_PATH:-$HOME/.appstoreconnect/AuthKey_73PNP8Z93X.p8}"
 BUNDLE_ID="com.xavier.soarxvoice"
 
 # --- Colors ---
@@ -142,73 +142,8 @@ xcodebuild -exportArchive \
 
 # --- Set TestFlight "What to Test" via App Store Connect API ---
 set_testflight_notes() {
-    if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ ! -f "$ASC_KEY_PATH" ]; then
-        warn "App Store Connect API not configured. Skipping auto-notes."
-        warn "To enable, set: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH"
-        warn "See: https://developer.apple.com/documentation/appstoreconnectapi/creating_api_keys_for_app_store_connect_api"
-        return 1
-    fi
-
     info "Setting TestFlight 'What to Test' notes..."
-
-    # Generate JWT
-    local HEADER=$(printf '{"alg":"ES256","kid":"%s","typ":"JWT"}' "$ASC_KEY_ID" | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
-    local NOW=$(date +%s)
-    local EXP=$((NOW + 1200))
-    local PAYLOAD=$(printf '{"iss":"%s","iat":%d,"exp":%d,"aud":"appstoreconnect-v1"}' "$ASC_ISSUER_ID" "$NOW" "$EXP" | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
-    local SIGNATURE=$(printf '%s.%s' "$HEADER" "$PAYLOAD" | openssl dgst -sha256 -sign "$ASC_KEY_PATH" -binary | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
-    local JWT="${HEADER}.${PAYLOAD}.${SIGNATURE}"
-
-    # Find the app ID first
-    local APP_RESPONSE=$(curl -s -H "Authorization: Bearer $JWT" \
-        "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=${BUNDLE_ID}")
-    local APP_ID=$(echo "$APP_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data'][0]['id'])" 2>/dev/null)
-
-    if [ -z "$APP_ID" ]; then
-        warn "Could not find app with bundle ID ${BUNDLE_ID}"
-        return 1
-    fi
-
-    # Wait for build to be processed (retry up to 5 times with 30s intervals)
-    local BUILD_ID=""
-    for i in 1 2 3 4 5; do
-        local BUILDS_RESPONSE=$(curl -s -H "Authorization: Bearer $JWT" \
-            "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=${APP_ID}&filter[version]=${NEW_BUILD}&sort=-uploadedDate&limit=1")
-        BUILD_ID=$(echo "$BUILDS_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data'][0]['id'])" 2>/dev/null)
-        if [ -n "$BUILD_ID" ]; then
-            break
-        fi
-        info "Build not yet available in App Store Connect, waiting 30s... (attempt $i/5)"
-        sleep 30
-    done
-
-    if [ -z "$BUILD_ID" ]; then
-        warn "Could not find build ${NEW_BUILD} after retries. Notes to paste manually:"
-        echo "$CHANGELOG_NOTES"
-        return 1
-    fi
-
-    # Check for existing localization
-    local LOC_RESPONSE=$(curl -s -H "Authorization: Bearer $JWT" \
-        "https://api.appstoreconnect.apple.com/v1/builds/${BUILD_ID}/betaBuildLocalizations")
-
-    local LOC_ID=$(echo "$LOC_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data'][0]['id'])" 2>/dev/null)
-
-    local ESCAPED_NOTES=$(echo "$CHANGELOG_NOTES" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")
-
-    if [ -n "$LOC_ID" ]; then
-        # Update existing
-        curl -s -X PATCH -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
-            "https://api.appstoreconnect.apple.com/v1/betaBuildLocalizations/${LOC_ID}" \
-            -d "{\"data\":{\"type\":\"betaBuildLocalizations\",\"id\":\"${LOC_ID}\",\"attributes\":{\"whatsNew\":${ESCAPED_NOTES}}}}" > /dev/null
-    else
-        # Create new
-        curl -s -X POST -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
-            "https://api.appstoreconnect.apple.com/v1/betaBuildLocalizations" \
-            -d "{\"data\":{\"type\":\"betaBuildLocalizations\",\"attributes\":{\"locale\":\"en-US\",\"whatsNew\":${ESCAPED_NOTES}},\"relationships\":{\"build\":{\"data\":{\"type\":\"builds\",\"id\":\"${BUILD_ID}\"}}}}}" > /dev/null
-    fi
-
-    info "TestFlight notes set successfully!"
+    python3 "$PROJECT_DIR/scripts/set-testflight-notes.py" "$NEW_BUILD" "$CHANGELOG_NOTES"
 }
 
 set_testflight_notes
