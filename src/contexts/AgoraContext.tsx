@@ -321,10 +321,10 @@ export function AgoraProvider({children}: {children: ReactNode}) {
       isMutedRef.current = newMuted;
       setIsMuted(newMuted);
       updateForegroundMuteStatus(newMuted, channelNameRef.current);
-      // Any mute/unmute action = user is active → reset inactivity
-      resetActivity();
+      // Any mute/unmute action = user is active → full reset (like "Stay Connected")
+      dismissWarning();
     }
-  }, [resetActivity]);
+  }, [dismissWarning]);
 
   const toggleSpeaker = useCallback(() => {
     const engine = engineRef.current;

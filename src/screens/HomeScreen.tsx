@@ -174,7 +174,7 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
         <Text style={styles.bleButtonText}>Mute Button Setup</Text>
       </TouchableOpacity>
 
-      <Text style={styles.version}>v0.1.0</Text>
+      <Text style={styles.version}>v1.4</Text>
     </View>
     </TouchableWithoutFeedback>
   );
