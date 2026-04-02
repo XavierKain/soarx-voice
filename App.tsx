@@ -7,9 +7,9 @@ import {AgoraProvider} from './src/contexts/AgoraContext';
 import {ThemeProvider, useTheme} from './src/contexts/ThemeContext';
 import {HomeScreen} from './src/screens/HomeScreen';
 import {VoiceScreen} from './src/screens/VoiceScreen';
-import {BLESetupScreen} from './src/screens/BLESetupScreen';
+import {SettingsScreen} from './src/screens/SettingsScreen';
 
-type Screen = 'home' | 'voice' | 'bleSetup';
+type Screen = 'home' | 'voice' | 'settings';
 
 function AppContent() {
   const [screen, setScreen] = useState<Screen>('home');
@@ -21,14 +21,14 @@ function AppContent() {
       {screen === 'home' && (
         <HomeScreen
           onJoined={() => setScreen('voice')}
-          onBLESetup={() => setScreen('bleSetup')}
+          onSettings={() => setScreen('settings')}
         />
       )}
       {screen === 'voice' && (
         <VoiceScreen onLeft={() => setScreen('home')} />
       )}
-      {screen === 'bleSetup' && (
-        <BLESetupScreen onDone={() => setScreen('home')} />
+      {screen === 'settings' && (
+        <SettingsScreen onDone={() => setScreen('home')} />
       )}
     </View>
   );

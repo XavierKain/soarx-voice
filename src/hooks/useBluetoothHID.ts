@@ -1,5 +1,6 @@
-import {useEffect} from 'react';
+import {useEffect, useRef} from 'react';
 import {NativeEventEmitter, NativeModules} from 'react-native';
+import {appLog} from '../utils/logger';
 
 const {BLEButtonManager, HIDModule} = NativeModules;
 
@@ -8,35 +9,49 @@ interface HIDEvent {
 }
 
 export function useBluetoothHID(onToggle: () => void) {
-  // Use only HIDModule listener (volume detection + headset media buttons)
-  // BLEButtonManager uses a different event name to avoid double-fire
+  // Use a ref so listeners are subscribed ONCE and always call the latest callback
+  const onToggleRef = useRef(onToggle);
+  onToggleRef.current = onToggle;
+
+  // HID listener — subscribe once
   useEffect(() => {
     if (!HIDModule) {
-      console.warn('[HID] HIDModule not available');
+      appLog('HID', 'HIDModule not available');
       return;
     }
     const emitter = new NativeEventEmitter(HIDModule);
-    const subscription = emitter.addListener('onHIDToggle', (_event: HIDEvent) => {
-      onToggle();
+    const subscription = emitter.addListener('onHIDToggle', (event: HIDEvent) => {
+      appLog('HID', `onHIDToggle — source=${event.source}`);
+      onToggleRef.current();
     });
-    return () => subscription.remove();
-  }, [onToggle]);
+    appLog('HID', 'Listener subscribed (stable)');
+    return () => {
+      appLog('HID', 'Listener unsubscribed');
+      subscription.remove();
+    };
+  }, []); // empty deps — subscribe once
 
-  // BLE button events use a separate event name
+  // BLE listener — subscribe once
   useEffect(() => {
     if (!BLEButtonManager) return;
     const emitter = new NativeEventEmitter(BLEButtonManager);
-    const subscription = emitter.addListener('onBLEToggle', (_event: HIDEvent) => {
-      onToggle();
+    const subscription = emitter.addListener('onBLEToggle', (event: HIDEvent) => {
+      appLog('BLE', `onBLEToggle — source=${event.source}`);
+      onToggleRef.current();
     });
-    return () => subscription.remove();
-  }, [onToggle]);
+    appLog('BLE', 'Listener subscribed (stable)');
+    return () => {
+      appLog('BLE', 'Listener unsubscribed');
+      subscription.remove();
+    };
+  }, []); // empty deps — subscribe once
 
   // Auto-reconnect to saved BLE device on mount
   useEffect(() => {
     if (!BLEButtonManager) return;
     BLEButtonManager.getSavedDeviceUUID().then((uuid: string | null) => {
       if (uuid) {
+        appLog('BLE', `Auto-reconnecting to ${uuid.substring(0, 8)}...`);
         BLEButtonManager.connectToDevice(uuid);
       }
     });

@@ -7,8 +7,10 @@ import createAgoraRtcEngine, {
   AudioScenarioType,
 } from 'react-native-agora';
 import {AGORA_APP_ID} from '@env';
+import {AppState, AppStateStatus, Platform, NativeModules} from 'react-native';
 import {Pilot, ConnectionState, ChannelConfig} from '../types';
 import {startForegroundService, stopForegroundService, updateForegroundMuteStatus} from '../services/AndroidForegroundService';
+import {appLog} from '../utils/logger';
 
 export type InactivityWarning = null | 'solo' | 'silence';
 
@@ -26,6 +28,11 @@ interface AgoraContextValue {
   warningSecondsLeft: number;
   dismissWarning: () => void;
   autoDisconnected: boolean;
+  isConnected: () => boolean;
+  isPausedForVideo: boolean;
+  pauseForVideo: () => void;
+  resumeFromVideo: () => void;
+  playEffect: (soundId: number, filePath: string) => void;
 }
 
 const AgoraContext = createContext<AgoraContextValue | null>(null);
@@ -41,7 +48,9 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   const [channelName, setChannelName] = useState('');
   const isMutedRef = useRef(false);
   const channelNameRef = useRef('');
+  const connectionStateRef = useRef<ConnectionState>('disconnected');
   const leaveChannelRef = useRef<() => Promise<void>>(async () => {});
+  const audioInterruptedRef = useRef(false);
 
   // Inactivity guard
   const SOLO_TIMEOUT = 5 * 60 * 1000;      // 5 min alone → warning
@@ -59,6 +68,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   const inactivityWarningRef = useRef<InactivityWarning>(null);
   const [warningSecondsLeft, setWarningSecondsLeft] = useState(0);
   const [autoDisconnected, setAutoDisconnected] = useState(false);
+  const [isPausedForVideo, setIsPausedForVideo] = useState(false);
 
   const resetActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -197,7 +207,22 @@ export function AgoraProvider({children}: {children: ReactNode}) {
         3: 'connected',
         4: 'reconnecting',
       };
-      setConnectionState(stateMap[state] ?? 'disconnected');
+      const mapped = stateMap[state] ?? 'disconnected';
+      connectionStateRef.current = mapped;
+      setConnectionState(mapped);
+    });
+
+    // Audio interruption handling (e.g. Camera app takes mic for video recording)
+    engine.addListener('onLocalAudioStateChanged', (_connection: any, state: number, reason: number) => {
+      if (reason === 8) {
+        console.log('[Agora] Audio interrupted — releasing mic for other app');
+        audioInterruptedRef.current = true;
+        engine.enableLocalAudio(false);
+      } else if (reason === 0 && audioInterruptedRef.current) {
+        console.log('[Agora] Audio interruption ended — reclaiming mic');
+        audioInterruptedRef.current = false;
+        engine.enableLocalAudio(true);
+      }
     });
 
     engine.enableAudioVolumeIndication(250, 3, true);
@@ -271,7 +296,9 @@ export function AgoraProvider({children}: {children: ReactNode}) {
 
   const joinChannel = useCallback(async (config: ChannelConfig) => {
     setConnectionState('connecting');
+    connectionStateRef.current = 'connecting';
     setAutoDisconnected(false);
+    setIsSpeakerOn(false);
     setChannelName(config.channelName);
     channelNameRef.current = config.channelName;
     pilotNameRef.current = config.pilotName;
@@ -294,13 +321,18 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   }, [initEngine, broadcastName]);
 
   const leaveChannel = useCallback(async () => {
+    appLog('Agora', 'leaveChannel() START');
+    setConnectionState('disconnected');
+    connectionStateRef.current = 'disconnected';
+    appLog('Agora', 'connectionState set to disconnected');
     stopInactivityTimer();
     const engine = engineRef.current;
     if (engine) {
+      appLog('Agora', 'calling engine.leaveChannel()');
       engine.leaveChannel();
+      appLog('Agora', 'engine.leaveChannel() done');
     }
     stopForegroundService();
-    setConnectionState('disconnected');
     setRemotePilots([]);
     remotePilotsRef.current = [];
     setChannelName('');
@@ -308,12 +340,36 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     setIsMuted(false);
     isMutedRef.current = false;
     dataStreamIdRef.current = null;
+    appLog('Agora', 'leaveChannel() END');
   }, []);
 
   // Keep ref in sync so the inactivity timer can call leaveChannel without circular deps
   leaveChannelRef.current = leaveChannel;
 
+  // Initialize AudioSessionManager native module (handles audio session release for Camera video)
+  useEffect(() => {
+    if (Platform.OS === 'ios' && NativeModules.AudioSessionManager) {
+      NativeModules.AudioSessionManager.ping().then((msg: string) =>
+        console.log('[AudioSessionManager]', msg),
+      );
+    }
+  }, []);
+
+  // AppState backup: reclaim mic when app returns to foreground after audio interruption
+  useEffect(() => {
+    const handleAppState = (nextState: AppStateStatus) => {
+      if (nextState === 'active' && audioInterruptedRef.current && engineRef.current) {
+        console.log('[Agora] AppState active — reclaiming mic after interruption');
+        audioInterruptedRef.current = false;
+        engineRef.current.enableLocalAudio(true);
+      }
+    };
+    const sub = AppState.addEventListener('change', handleAppState);
+    return () => sub.remove();
+  }, []);
+
   const toggleMute = useCallback(() => {
+    appLog('Agora', `toggleMute() called — current=${isMutedRef.current} connState=${connectionStateRef.current}`);
     const engine = engineRef.current;
     if (engine) {
       const newMuted = !isMutedRef.current;
@@ -321,19 +377,67 @@ export function AgoraProvider({children}: {children: ReactNode}) {
       isMutedRef.current = newMuted;
       setIsMuted(newMuted);
       updateForegroundMuteStatus(newMuted, channelNameRef.current);
-      // Any mute/unmute action = user is active → full reset (like "Stay Connected")
       dismissWarning();
+      appLog('Agora', `toggleMute() done — new=${newMuted}`);
+    } else {
+      appLog('Agora', 'toggleMute() — no engine');
     }
   }, [dismissWarning]);
 
   const toggleSpeaker = useCallback(() => {
+    appLog('Agora', `toggleSpeaker() called — current=${isSpeakerOn}`);
     const engine = engineRef.current;
     if (engine) {
       const newSpeaker = !isSpeakerOn;
       engine.setEnableSpeakerphone(newSpeaker);
       setIsSpeakerOn(newSpeaker);
+      appLog('Agora', `toggleSpeaker() done — new=${newSpeaker}`);
     }
   }, [isSpeakerOn]);
+
+  // Pause audio for video recording — releases mic so Camera can use it
+  const pauseForVideo = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    console.log('[Agora] Pausing audio for video recording');
+    setIsPausedForVideo(true);
+    engine.disableAudio();
+  }, []);
+
+  const resumeFromVideo = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    console.log('[Agora] Resuming audio after video recording');
+    engine.enableAudio();
+    engine.muteLocalAudioStream(isMutedRef.current);
+    setIsPausedForVideo(false);
+  }, []);
+
+  // Auto-resume when app returns to foreground after video pause
+  useEffect(() => {
+    const handleAppState = (nextState: AppStateStatus) => {
+      if (nextState === 'active' && isPausedForVideo) {
+        resumeFromVideo();
+      }
+    };
+    const sub = AppState.addEventListener('change', handleAppState);
+    return () => sub.remove();
+  }, [isPausedForVideo, resumeFromVideo]);
+
+  const playEffectSound = useCallback((soundId: number, fileName: string) => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    try {
+      // On iOS, Agora accepts the filename directly if it's in the main bundle
+      // On Android, use the resource name without extension from res/raw/
+      const filePath = Platform.OS === 'android'
+        ? `/assets/${fileName}`
+        : fileName;
+      engine.playEffect(soundId, filePath, 0, 1.0, 0, 100, false, 0);
+    } catch (e) {
+      console.warn('[Agora] playEffect error:', e);
+    }
+  }, []);
 
   return (
     <AgoraContext.Provider
@@ -351,6 +455,11 @@ export function AgoraProvider({children}: {children: ReactNode}) {
         warningSecondsLeft,
         dismissWarning,
         autoDisconnected,
+        isConnected: () => connectionStateRef.current === 'connected',
+        isPausedForVideo,
+        pauseForVideo,
+        resumeFromVideo,
+        playEffect: playEffectSound,
       }}>
       {children}
     </AgoraContext.Provider>

@@ -1,5 +1,5 @@
 import React, {useEffect, useRef} from 'react';
-import {View, Text, TouchableOpacity, StyleSheet, Alert, Vibration, Platform} from 'react-native';
+import {View, Text, TouchableOpacity, StyleSheet, Alert, Vibration, Platform, Linking} from 'react-native';
 import Sound from 'react-native-sound';
 import {useAgoraContext} from '../contexts/AgoraContext';
 import {useUser} from '../contexts/UserContext';
@@ -11,19 +11,16 @@ import {ChannelBadge} from '../components/ChannelBadge';
 import {useTheme} from '../contexts/ThemeContext';
 import {colors as defaultColors, fonts, spacing, radius} from '../theme';
 
-Sound.setCategory('Playback');
-
 interface VoiceScreenProps {
   onLeft: () => void;
 }
 
 export function VoiceScreen({onLeft}: VoiceScreenProps) {
   const {colors} = useTheme();
-  const {channelName, remotePilots, leaveChannel, connectionState, isSpeakerOn, toggleSpeaker, inactivityWarning, warningSecondsLeft, dismissWarning, autoDisconnected} = useAgoraContext();
+  const {channelName, remotePilots, leaveChannel, connectionState, isSpeakerOn, toggleSpeaker, inactivityWarning, warningSecondsLeft, dismissWarning, autoDisconnected, isPausedForVideo, pauseForVideo, resumeFromVideo} = useAgoraContext();
   const {pilotName} = useUser();
   const {isMuted, toggle} = useMute();
   useBluetoothHID(toggle);
-  const warningAudioRef = useRef<Sound | null>(null);
   const audioPlayedRef = useRef(false);
 
   // Play audio warning for silence timeout
@@ -33,11 +30,8 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
       try {
         Vibration.vibrate(Platform.OS === 'ios' ? 500 : 1000);
       } catch {}
-      const sound = new Sound('inactivity_warning.mp3', Sound.MAIN_BUNDLE, (error) => {
-        if (!error) {
-          sound.play(() => sound.release());
-          warningAudioRef.current = sound;
-        }
+      const warning = new Sound('inactivity_warning.mp3', Sound.MAIN_BUNDLE, (err) => {
+        if (!err) warning.play(() => warning.release());
       });
     } else if (inactivityWarning === 'solo') {
       try {
@@ -46,11 +40,6 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
     }
     if (!inactivityWarning) {
       audioPlayedRef.current = false;
-      if (warningAudioRef.current) {
-        warningAudioRef.current.stop();
-        warningAudioRef.current.release();
-        warningAudioRef.current = null;
-      }
     }
   }, [inactivityWarning]);
 
@@ -116,7 +105,29 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
           activeOpacity={0.7}>
           <Text style={styles.speakerIcon}>{isSpeakerOn ? '🔊' : '🔈'}</Text>
           <Text style={[styles.speakerText, {color: colors.textSecondary}, isSpeakerOn && {color: colors.primary}]}>
-            {isSpeakerOn ? 'Speaker' : 'Speaker'}
+            Speaker
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.speakerPill, {backgroundColor: colors.bgCard, borderColor: colors.primaryBorder}, isPausedForVideo && styles.speakerPillActive]}
+          onPress={() => {
+            if (isPausedForVideo) {
+              resumeFromVideo();
+            } else {
+              pauseForVideo();
+              // Open Camera app after a short delay to let audio session release
+              setTimeout(() => {
+                Linking.canOpenURL('camera://').then(can => {
+                  if (can) Linking.openURL('camera://');
+                });
+              }, 500);
+            }
+          }}
+          activeOpacity={0.7}>
+          <Text style={styles.speakerIcon}>{isPausedForVideo ? '🎙️' : '🎥'}</Text>
+          <Text style={[styles.speakerText, {color: colors.textSecondary}, isPausedForVideo && {color: colors.primary}]}>
+            {isPausedForVideo ? 'Resume' : 'Video'}
           </Text>
         </TouchableOpacity>
       </View>

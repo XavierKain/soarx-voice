@@ -12,10 +12,10 @@ const DEFAULT_CHANNEL = 'TARIFA-01';
 
 interface HomeScreenProps {
   onJoined: () => void;
-  onBLESetup: () => void;
+  onSettings: () => void;
 }
 
-export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
+export function HomeScreen({onJoined, onSettings}: HomeScreenProps) {
   const {pilotName, setPilotName} = useUser();
   const {joinChannel} = useAgoraContext();
   const {colors, mode, toggleTheme} = useTheme();
@@ -170,8 +170,8 @@ export function HomeScreen({onJoined, onBLESetup}: HomeScreenProps) {
         <Text style={styles.joinText}>{isJoining ? 'Connecting...' : 'Join Flight'}</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.bleButton} onPress={onBLESetup} activeOpacity={0.7}>
-        <Text style={styles.bleButtonText}>Mute Button Setup</Text>
+      <TouchableOpacity style={styles.bleButton} onPress={onSettings} activeOpacity={0.7}>
+        <Text style={styles.bleButtonText}>Settings</Text>
       </TouchableOpacity>
 
       <Text style={styles.version}>v1.4</Text>

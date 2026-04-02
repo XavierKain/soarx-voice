@@ -24,10 +24,8 @@ class HIDModule: RCTEventEmitter {
   override func startObserving() {
     hasListeners = true
     NSLog("[HID] JS listeners attached")
-    // Keep screen on during voice channel (AssistiveTouch needs active screen)
     DispatchQueue.main.async {
       UIApplication.shared.isIdleTimerDisabled = true
-      NSLog("[HID] Screen stays on (idle timer disabled)")
     }
   }
 
@@ -36,7 +34,6 @@ class HIDModule: RCTEventEmitter {
     NSLog("[HID] JS listeners detached")
     DispatchQueue.main.async {
       UIApplication.shared.isIdleTimerDisabled = false
-      NSLog("[HID] Screen auto-lock restored")
     }
   }
 
@@ -47,31 +44,25 @@ class HIDModule: RCTEventEmitter {
   private func setupRemoteCommandCenter() {
     let cc = MPRemoteCommandCenter.shared()
 
+    // Only react to togglePlayPause — the actual headset button press
+    // play/pause/nextTrack/previousTrack fire as system events on audio route
+    // changes (speaker toggle, leave channel) and cause false positives
     cc.togglePlayPauseCommand.isEnabled = true
     cc.togglePlayPauseCommand.addTarget { [weak self] _ in
       self?.emitToggle(source: "remoteCommand-togglePlayPause")
       return .success
     }
+
+    // Disable other commands to prevent false toggles from system events
+    // but still claim them so other apps don't steal audio focus
     cc.playCommand.isEnabled = true
-    cc.playCommand.addTarget { [weak self] _ in
-      self?.emitToggle(source: "remoteCommand-play")
-      return .success
-    }
+    cc.playCommand.addTarget { _ in return .success }
     cc.pauseCommand.isEnabled = true
-    cc.pauseCommand.addTarget { [weak self] _ in
-      self?.emitToggle(source: "remoteCommand-pause")
-      return .success
-    }
+    cc.pauseCommand.addTarget { _ in return .success }
     cc.nextTrackCommand.isEnabled = true
-    cc.nextTrackCommand.addTarget { [weak self] _ in
-      self?.emitToggle(source: "remoteCommand-nextTrack")
-      return .success
-    }
+    cc.nextTrackCommand.addTarget { _ in return .success }
     cc.previousTrackCommand.isEnabled = true
-    cc.previousTrackCommand.addTarget { [weak self] _ in
-      self?.emitToggle(source: "remoteCommand-previousTrack")
-      return .success
-    }
+    cc.previousTrackCommand.addTarget { _ in return .success }
 
     let nowPlayingInfo: [String: Any] = [
       MPMediaItemPropertyTitle: "SoarXVoice",
@@ -98,6 +89,9 @@ class HIDModule: RCTEventEmitter {
 
   private func emitToggle(source: String) {
     NSLog("[HID] TOGGLE source=\(source) hasListeners=\(hasListeners)")
+    let now = Date().timeIntervalSince1970
+    if now - lastToggleTime < 0.5 { return }
+    lastToggleTime = now
     if hasListeners {
       sendEvent(withName: "onHIDToggle", body: ["source": source])
     }
