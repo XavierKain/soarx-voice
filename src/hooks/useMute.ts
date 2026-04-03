@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef} from 'react';
-import {Vibration, Platform} from 'react-native';
+import {Vibration, Platform, NativeModules} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Sound from 'react-native-sound';
 import {useAgoraContext} from '../contexts/AgoraContext';
@@ -49,15 +49,10 @@ export function useMute() {
     appLog('Mute', `Playing feedback: willBeMuted=${willBeMuted} mode=${feedbackModeRef.current}`);
 
     try {
-      if (willBeMuted) {
-        Vibration.vibrate(Platform.OS === 'ios' ? 10 : 50);
+      if (Platform.OS === 'ios' && NativeModules.HapticManager) {
+        willBeMuted ? NativeModules.HapticManager.singleTap() : NativeModules.HapticManager.doubleTap();
       } else {
-        if (Platform.OS === 'ios') {
-          Vibration.vibrate(10);
-          setTimeout(() => Vibration.vibrate(10), 150);
-        } else {
-          Vibration.vibrate([0, 50, 100, 50]);
-        }
+        willBeMuted ? Vibration.vibrate(50) : Vibration.vibrate([0, 50, 100, 50]);
       }
     } catch {}
 

@@ -81,5 +81,9 @@
 			<string>com.soarxvoice.app</string>
 		</dict>
 	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>camera</string>
+	</array>
 </dict>
 </plist>

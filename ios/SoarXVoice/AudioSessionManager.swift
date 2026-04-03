@@ -56,9 +56,23 @@ class AudioSessionManager: NSObject {
     }
   }
 
-  // Expose to JS so React Native loads the module
   @objc func ping(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
     resolve("AudioSessionManager active")
+  }
+
+  @objc func openCameraForVideo() {
+    DispatchQueue.main.async {
+      // Try multiple camera URL schemes
+      let schemes = ["camera://video", "camera://"]
+      for scheme in schemes {
+        if let url = URL(string: scheme) {
+          UIApplication.shared.open(url, options: [:]) { success in
+            NSLog("[AudioSessionManager] open \(scheme): \(success)")
+          }
+          if UIApplication.shared.canOpenURL(url) { return }
+        }
+      }
+    }
   }
 
   @objc static func requiresMainQueueSetup() -> Bool { return true }

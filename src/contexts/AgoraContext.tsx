@@ -32,6 +32,7 @@ interface AgoraContextValue {
   isPausedForVideo: boolean;
   pauseForVideo: () => void;
   resumeFromVideo: () => void;
+  isHeadphonesConnected: boolean;
   playEffect: (soundId: number, filePath: string) => void;
 }
 
@@ -69,6 +70,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   const [warningSecondsLeft, setWarningSecondsLeft] = useState(0);
   const [autoDisconnected, setAutoDisconnected] = useState(false);
   const [isPausedForVideo, setIsPausedForVideo] = useState(false);
+  const [isHeadphonesConnected, setIsHeadphonesConnected] = useState(false);
 
   const resetActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -214,15 +216,31 @@ export function AgoraProvider({children}: {children: ReactNode}) {
 
     // Audio interruption handling (e.g. Camera app takes mic for video recording)
     engine.addListener('onLocalAudioStateChanged', (_connection: any, state: number, reason: number) => {
+      appLog('Agora', `onLocalAudioStateChanged state=${state} reason=${reason}`);
       if (reason === 8) {
-        console.log('[Agora] Audio interrupted — releasing mic for other app');
+        // Another app took the mic (Camera video, phone call, etc.)
+        appLog('Agora', 'Audio interrupted — auto-pausing for video');
         audioInterruptedRef.current = true;
-        engine.enableLocalAudio(false);
+        setIsPausedForVideo(true);
+        engine.disableAudio();
       } else if (reason === 0 && audioInterruptedRef.current) {
-        console.log('[Agora] Audio interruption ended — reclaiming mic');
+        appLog('Agora', 'Audio interruption ended — auto-resuming');
         audioInterruptedRef.current = false;
-        engine.enableLocalAudio(true);
+        engine.enableAudio();
+        engine.muteLocalAudioStream(isMutedRef.current);
+        setIsPausedForVideo(false);
       }
+    });
+
+    // Detect headphones/AirPods connection via audio route changes
+    // Agora AudioRoute enum: -1=Default, 0=Headset, 1=Earpiece,
+    // 2=HeadsetNoMic, 3=Speakerphone, 4=Loudspeaker,
+    // 5=BluetoothHFP, 6=USB, 7=HDMI, 10=BluetoothA2DP
+    engine.addListener('onAudioRoutingChanged', (_routing: number) => {
+      const headphoneRoutes = [0, 2, 5, 10]; // Headset, HeadsetNoMic, BluetoothHFP, BluetoothA2DP
+      const isHP = headphoneRoutes.includes(_routing);
+      setIsHeadphonesConnected(isHP);
+      appLog('Agora', `Audio route changed: ${_routing} headphones=${isHP}`);
     });
 
     engine.enableAudioVolumeIndication(250, 3, true);
@@ -459,6 +477,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
         isPausedForVideo,
         pauseForVideo,
         resumeFromVideo,
+        isHeadphonesConnected,
         playEffect: playEffectSound,
       }}>
       {children}

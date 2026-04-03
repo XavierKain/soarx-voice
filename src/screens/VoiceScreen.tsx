@@ -1,5 +1,5 @@
 import React, {useEffect, useRef} from 'react';
-import {View, Text, TouchableOpacity, StyleSheet, Alert, Vibration, Platform, Linking} from 'react-native';
+import {View, Text, TouchableOpacity, StyleSheet, Alert, Vibration, Platform} from 'react-native';
 import Sound from 'react-native-sound';
 import {useAgoraContext} from '../contexts/AgoraContext';
 import {useUser} from '../contexts/UserContext';
@@ -17,7 +17,7 @@ interface VoiceScreenProps {
 
 export function VoiceScreen({onLeft}: VoiceScreenProps) {
   const {colors} = useTheme();
-  const {channelName, remotePilots, leaveChannel, connectionState, isSpeakerOn, toggleSpeaker, inactivityWarning, warningSecondsLeft, dismissWarning, autoDisconnected, isPausedForVideo, pauseForVideo, resumeFromVideo} = useAgoraContext();
+  const {channelName, remotePilots, leaveChannel, connectionState, isSpeakerOn, toggleSpeaker, inactivityWarning, warningSecondsLeft, dismissWarning, autoDisconnected, isPausedForVideo, pauseForVideo, resumeFromVideo, isHeadphonesConnected} = useAgoraContext();
   const {pilotName} = useUser();
   const {isMuted, toggle} = useMute();
   useBluetoothHID(toggle);
@@ -99,37 +99,40 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
       <View style={styles.controls}>
         <MuteButton isMuted={isMuted} onPress={toggle} />
 
-        <TouchableOpacity
-          style={[styles.speakerPill, {backgroundColor: colors.bgCard, borderColor: colors.primaryBorder}, isSpeakerOn && styles.speakerPillActive]}
-          onPress={toggleSpeaker}
-          activeOpacity={0.7}>
-          <Text style={styles.speakerIcon}>{isSpeakerOn ? '🔊' : '🔈'}</Text>
-          <Text style={[styles.speakerText, {color: colors.textSecondary}, isSpeakerOn && {color: colors.primary}]}>
-            Speaker
-          </Text>
-        </TouchableOpacity>
+        {isHeadphonesConnected ? (
+          <View style={[styles.speakerPill, {backgroundColor: colors.bgCard, borderColor: colors.green + '66'}]}>
+            <Text style={styles.speakerIcon}>🎧</Text>
+            <Text style={[styles.speakerText, {color: colors.green}]}>Earphone</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.speakerPill, {backgroundColor: colors.bgCard, borderColor: colors.primaryBorder}, isSpeakerOn && styles.speakerPillActive]}
+            onPress={toggleSpeaker}
+            activeOpacity={0.7}>
+            <Text style={styles.speakerIcon}>{isSpeakerOn ? '🔊' : '🔈'}</Text>
+            <Text style={[styles.speakerText, {color: colors.textSecondary}, isSpeakerOn && {color: colors.primary}]}>
+              Speaker
+            </Text>
+          </TouchableOpacity>
+        )}
 
-        <TouchableOpacity
-          style={[styles.speakerPill, {backgroundColor: colors.bgCard, borderColor: colors.primaryBorder}, isPausedForVideo && styles.speakerPillActive]}
-          onPress={() => {
-            if (isPausedForVideo) {
-              resumeFromVideo();
-            } else {
-              pauseForVideo();
-              // Open Camera app after a short delay to let audio session release
-              setTimeout(() => {
-                Linking.canOpenURL('camera://').then(can => {
-                  if (can) Linking.openURL('camera://');
-                });
-              }, 500);
-            }
-          }}
-          activeOpacity={0.7}>
-          <Text style={styles.speakerIcon}>{isPausedForVideo ? '🎙️' : '🎥'}</Text>
-          <Text style={[styles.speakerText, {color: colors.textSecondary}, isPausedForVideo && {color: colors.primary}]}>
-            {isPausedForVideo ? 'Resume' : 'Video'}
-          </Text>
-        </TouchableOpacity>
+        {isPausedForVideo ? (
+          <TouchableOpacity
+            style={[styles.speakerPill, {backgroundColor: colors.bgCard, borderColor: colors.green + '66'}]}
+            onPress={resumeFromVideo}
+            activeOpacity={0.7}>
+            <Text style={styles.speakerIcon}>🎙️</Text>
+            <Text style={[styles.speakerText, {color: colors.green}]}>Resume</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.speakerPill, {backgroundColor: colors.bgCard, borderColor: colors.primaryBorder}]}
+            onPress={pauseForVideo}
+            activeOpacity={0.7}>
+            <Text style={styles.speakerIcon}>🎥</Text>
+            <Text style={[styles.speakerText, {color: colors.textSecondary}]}>Video</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <TouchableOpacity style={styles.leaveButton} onPress={handleLeave} activeOpacity={0.6}>

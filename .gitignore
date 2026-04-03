@@ -79,3 +79,4 @@ yarn-error.log
 
 # Superpowers artifacts
 .superpowers/
+ios/android/

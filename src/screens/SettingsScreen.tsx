@@ -266,7 +266,7 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
         <View style={[styles.card, {backgroundColor: colors.bgCard, borderColor: colors.cardBorder}]}>
           <View style={styles.aboutRow}>
             <Text style={[styles.aboutLabel, {color: colors.textSecondary}]}>Version</Text>
-            <Text style={[styles.aboutValue, {color: colors.text}]}>1.4</Text>
+            <Text style={[styles.aboutValue, {color: colors.text}]}>1.5</Text>
           </View>
         </View>
 
