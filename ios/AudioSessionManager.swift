@@ -6,9 +6,8 @@ import React
 @objc(AudioSessionManager)
 class AudioSessionManager: RCTEventEmitter {
 
-  private var wasManuallyMuted = false
-  private var isInterrupted = false
   private var hasListeners = false
+  private var isInterrupted = false
 
   override init() {
     super.init()
@@ -25,20 +24,46 @@ class AudioSessionManager: RCTEventEmitter {
 
   @objc override static func requiresMainQueueSetup() -> Bool { return true }
 
-  // MARK: - Setup
+  // MARK: - Configure audio session BEFORE Agora uses it
+
+  @objc func configureAudioSession() {
+    let session = AVAudioSession.sharedInstance()
+    do {
+      try session.setCategory(
+        .playAndRecord,
+        mode: .voiceChat,
+        options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP]
+      )
+      try session.setActive(true, options: .notifyOthersOnDeactivation)
+      NSLog("[AudioSession] Configured and activated: playAndRecord + voiceChat")
+    } catch {
+      NSLog("[AudioSession] Configuration failed: \(error)")
+    }
+  }
+
+  @objc func deactivateAudioSession() {
+    do {
+      try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+      NSLog("[AudioSession] Deactivated — mic released")
+    } catch {
+      NSLog("[AudioSession] Deactivation failed: \(error)")
+    }
+  }
+
+  // MARK: - Notifications
 
   private func setupNotifications() {
     let nc = NotificationCenter.default
 
-    // Primary: AVAudioSession interruption (Camera taking mic, phone call, etc.)
+    // AVAudioSession interruption (Camera video, phone call, Siri, etc.)
     nc.addObserver(
       self,
-      selector: #selector(handleAudioInterruption(_:)),
+      selector: #selector(handleInterruption(_:)),
       name: AVAudioSession.interruptionNotification,
       object: AVAudioSession.sharedInstance()
     )
 
-    // Secondary: hint that another app is about to take audio
+    // Secondary audio hint (early warning)
     nc.addObserver(
       self,
       selector: #selector(handleSecondaryAudioHint(_:)),
@@ -57,69 +82,41 @@ class AudioSessionManager: RCTEventEmitter {
     NSLog("[AudioSession] Notifications registered")
   }
 
-  // MARK: - Audio session control (called from JS)
+  // MARK: - Interruption handling (Camera taking mic, phone call, etc.)
 
-  @objc func configureAudioSession() {
-    do {
-      let session = AVAudioSession.sharedInstance()
-      try session.setCategory(
-        .playAndRecord,
-        mode: .voiceChat,
-        options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP]
-      )
-      try session.setActive(true)
-      NSLog("[AudioSession] Configured and activated: playAndRecord + voiceChat")
-    } catch {
-      NSLog("[AudioSession] Configuration failed: \(error)")
-    }
-  }
-
-  @objc func deactivateAudioSession() {
-    do {
-      try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-      NSLog("[AudioSession] Deactivated — mic released for other apps")
-    } catch {
-      NSLog("[AudioSession] Deactivation failed: \(error)")
-    }
-  }
-
-  // MARK: - Interruption handling
-
-  @objc private func handleAudioInterruption(_ notification: Notification) {
+  @objc private func handleInterruption(_ notification: Notification) {
     guard let info = notification.userInfo,
           let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
           let type = AVAudioSession.InterruptionType(rawValue: typeValue)
     else {
-      NSLog("[AudioSession] Interruption notification without valid type")
+      NSLog("[AudioSession] Interruption without valid type")
       return
     }
 
     switch type {
     case .began:
-      NSLog("[AudioSession] ★ INTERRUPTION BEGAN (Camera/call took the mic)")
+      NSLog("[AudioSession] ★ INTERRUPTION BEGAN — Camera/call took the mic")
       isInterrupted = true
       if hasListeners {
         sendEvent(withName: "onAudioInterrupted", body: ["reason": "interruption"])
       }
 
     case .ended:
-      let options = AVAudioSession.InterruptionOptions(
-        rawValue: info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-      )
+      let optValue = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+      let options = AVAudioSession.InterruptionOptions(rawValue: optValue)
       let shouldResume = options.contains(.shouldResume)
-      NSLog("[AudioSession] ★ INTERRUPTION ENDED (shouldResume=\(shouldResume))")
+      NSLog("[AudioSession] ★ INTERRUPTION ENDED — shouldResume=\(shouldResume)")
       isInterrupted = false
 
-      // Reactivate our audio session
-      do {
-        try AVAudioSession.sharedInstance().setActive(true)
-        NSLog("[AudioSession] Audio session reactivated")
-      } catch {
-        NSLog("[AudioSession] Reactivation failed: \(error)")
-      }
-
-      if shouldResume && hasListeners {
-        sendEvent(withName: "onAudioResumed", body: ["reason": "interruptionEnded"])
+      if shouldResume {
+        // Delay to let Camera fully release the mic
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+          guard let self = self else { return }
+          self.reactivateSession()
+          if self.hasListeners {
+            self.sendEvent(withName: "onAudioResumed", body: ["reason": "interruptionEnded"])
+          }
+        }
       }
 
     @unknown default:
@@ -137,7 +134,7 @@ class AudioSessionManager: RCTEventEmitter {
 
     switch type {
     case .begin:
-      NSLog("[AudioSession] Secondary audio hint: BEGIN (another app wants audio)")
+      NSLog("[AudioSession] Secondary audio hint: BEGIN")
       if !isInterrupted && hasListeners {
         sendEvent(withName: "onAudioInterrupted", body: ["reason": "secondaryHint"])
       }
@@ -150,39 +147,37 @@ class AudioSessionManager: RCTEventEmitter {
     }
   }
 
-  // MARK: - App lifecycle: recover audio session on foreground return
+  // MARK: - App lifecycle fallback
 
   @objc private func appDidBecomeActive() {
     if isInterrupted {
-      NSLog("[AudioSession] App became active — reactivating session")
-      do {
-        try AVAudioSession.sharedInstance().setCategory(
-          .playAndRecord,
-          mode: .voiceChat,
-          options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP]
-        )
-        try AVAudioSession.sharedInstance().setActive(true)
-        isInterrupted = false
-        if hasListeners {
-          sendEvent(withName: "onAudioResumed", body: ["reason": "appBecameActive"])
-        }
-        NSLog("[AudioSession] Session reactivated")
-      } catch {
-        NSLog("[AudioSession] Reactivation failed: \(error)")
+      NSLog("[AudioSession] App became active while interrupted — recovering")
+      isInterrupted = false
+      reactivateSession()
+      if hasListeners {
+        sendEvent(withName: "onAudioResumed", body: ["reason": "appBecameActive"])
       }
     }
   }
 
+  // MARK: - Reactivate session after interruption
+
+  private func reactivateSession() {
+    let session = AVAudioSession.sharedInstance()
+    do {
+      try session.setCategory(
+        .playAndRecord,
+        mode: .voiceChat,
+        options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP]
+      )
+      try session.setActive(true, options: .notifyOthersOnDeactivation)
+      NSLog("[AudioSession] Session reactivated successfully")
+    } catch {
+      NSLog("[AudioSession] Reactivation failed: \(error)")
+    }
+  }
+
   // MARK: - JS methods
-
-  @objc func setManuallyMuted(_ muted: Bool) {
-    wasManuallyMuted = muted
-    NSLog("[AudioSession] wasManuallyMuted = \(muted)")
-  }
-
-  @objc func getManuallyMuted(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
-    resolve(wasManuallyMuted)
-  }
 
   @objc func ping(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
     resolve("AudioSessionManager active, interrupted=\(isInterrupted)")

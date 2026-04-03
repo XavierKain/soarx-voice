@@ -122,8 +122,23 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     if (engineRef.current) {
       return engineRef.current;
     }
+    // 1. Configure AVAudioSession OURSELVES first, before Agora touches it
+    if (Platform.OS === 'ios' && NativeModules.AudioSessionManager) {
+      NativeModules.AudioSessionManager.configureAudioSession();
+      appLog('Agora', 'Audio session configured by us before Agora init');
+    }
+
     const engine = createAgoraRtcEngine();
     engine.initialize({appId: AGORA_APP_ID});
+
+    // 2. Tell Agora: you can configure the session, but you CANNOT deactivate it
+    // This lets us control deactivation for Camera video recording
+    if (Platform.OS === 'ios') {
+      engine.setAudioSessionOperationRestriction(
+        AudioSessionOperationRestriction.AudioSessionOperationRestrictionDeactivateSession,
+      );
+      appLog('Agora', 'Restriction(DeactivateSession) — we control deactivation');
+    }
 
     engine.setChannelProfile(ChannelProfileType.ChannelProfileCommunication);
     engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
@@ -443,50 +458,32 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   }, [isSpeakerOn]);
 
   // Pause audio for video recording — releases mic so Camera can use it
+  // Manual video pause: mute mic + deactivate session so Camera can record
   const pauseForVideo = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
-    appLog('Agora', 'pauseForVideo — taking over audio session + disabling audio');
+    appLog('Agora', 'pauseForVideo — muting mic + deactivating session');
+    engine.muteLocalAudioStream(true);
     setIsPausedForVideo(true);
-    if (Platform.OS === 'ios') {
-      // 1. Tell Agora to stop managing the audio session
-      engine.setAudioSessionOperationRestriction(
-        AudioSessionOperationRestriction.AudioSessionOperationRestrictionAll,
-      );
-      // 2. Disable Agora audio (releases internal audio units)
-      engine.disableAudio();
-      // 3. Deactivate the audio session so Camera can use mic
-      setTimeout(() => {
-        if (NativeModules.AudioSessionManager) {
-          NativeModules.AudioSessionManager.deactivateAudioSession();
-          appLog('Agora', 'pauseForVideo — audio session deactivated');
-        }
-      }, 200);
-    } else {
-      engine.disableAudio();
+    if (Platform.OS === 'ios' && NativeModules.AudioSessionManager) {
+      NativeModules.AudioSessionManager.deactivateAudioSession();
     }
   }, []);
 
+  // Resume after video: reactivate session + restore mic state
   const resumeFromVideo = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
-    appLog('Agora', 'resumeFromVideo — restoring audio');
-    if (Platform.OS === 'ios') {
-      // 1. Reactivate audio session via native module
-      if (NativeModules.AudioSessionManager) {
-        NativeModules.AudioSessionManager.configureAudioSession();
-      }
-      // 2. Give Agora back control of the audio session
-      engine.setAudioSessionOperationRestriction(
-        AudioSessionOperationRestriction.AudioSessionOperationRestrictionNone,
-      );
-      // 3. Re-enable audio
-      engine.enableAudio();
-      engine.muteLocalAudioStream(isMutedRef.current);
-    } else {
-      engine.enableAudio();
-      engine.muteLocalAudioStream(isMutedRef.current);
+    appLog('Agora', 'resumeFromVideo — reactivating session');
+    if (Platform.OS === 'ios' && NativeModules.AudioSessionManager) {
+      NativeModules.AudioSessionManager.configureAudioSession();
     }
+    // Small delay to let session reactivate before unmuting
+    setTimeout(() => {
+      engine.muteLocalAudioStream(isMutedRef.current);
+      setIsPausedForVideo(false);
+      appLog('Agora', `resumeFromVideo done — muted=${isMutedRef.current}`);
+    }, 500);
     setIsPausedForVideo(false);
     appLog('Agora', 'resumeFromVideo — done');
   }, []);
