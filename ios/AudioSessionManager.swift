@@ -150,19 +150,25 @@ class AudioSessionManager: RCTEventEmitter {
     }
   }
 
-  // MARK: - App lifecycle fallback
+  // MARK: - App lifecycle: recover audio session on foreground return
 
   @objc private func appDidBecomeActive() {
     if isInterrupted {
-      NSLog("[AudioSession] App became active while interrupted — attempting recovery")
+      NSLog("[AudioSession] App became active — reactivating session")
       do {
+        try AVAudioSession.sharedInstance().setCategory(
+          .playAndRecord,
+          mode: .voiceChat,
+          options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP]
+        )
         try AVAudioSession.sharedInstance().setActive(true)
         isInterrupted = false
         if hasListeners {
           sendEvent(withName: "onAudioResumed", body: ["reason": "appBecameActive"])
         }
+        NSLog("[AudioSession] Session reactivated")
       } catch {
-        NSLog("[AudioSession] Recovery failed: \(error)")
+        NSLog("[AudioSession] Reactivation failed: \(error)")
       }
     }
   }
