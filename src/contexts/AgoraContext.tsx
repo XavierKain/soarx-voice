@@ -53,6 +53,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   const connectionStateRef = useRef<ConnectionState>('disconnected');
   const leaveChannelRef = useRef<() => Promise<void>>(async () => {});
   const audioInterruptedRef = useRef(false);
+  const announcedUidsRef = useRef<Set<number>>(new Set());
 
   // Inactivity guard
   const SOLO_TIMEOUT = 5 * 60 * 1000;      // 5 min alone → warning
@@ -88,6 +89,14 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     // Also reset alone timer so solo doesn't re-trigger immediately
     aloneStartRef.current = remotePilotsRef.current.length === 0 ? Date.now() : null;
   }, [resetActivity]);
+
+  // TTS for pilot join/leave announcements
+  const speak = useCallback((text: string) => {
+    if (Platform.OS === 'ios' && NativeModules.TTSManager) {
+      NativeModules.TTSManager.speak(text);
+    }
+    appLog('TTS', text);
+  }, []);
 
   // Encode string to Uint8Array (Hermes-compatible, no TextEncoder needed)
   const strToBytes = (str: string): Uint8Array => {
@@ -148,10 +157,15 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     });
 
     engine.addListener('onUserOffline', (connection, remoteUid) => {
+      // Announce departure with name before removing
+      const pilot = remotePilotsRef.current.find(p => p.uid === remoteUid);
+      if (pilot && pilot.name !== 'Pilot') {
+        speak(`${pilot.name} left`);
+      }
+      announcedUidsRef.current.delete(remoteUid);
       setRemotePilots(prev => {
         const updated = prev.filter(p => p.uid !== remoteUid);
         remotePilotsRef.current = updated;
-        // If now alone, start tracking
         if (updated.length === 0) {
           aloneStartRef.current = Date.now();
         }
@@ -166,6 +180,11 @@ export function AgoraProvider({children}: {children: ReactNode}) {
         const msg = JSON.parse(text);
         console.log('[Agora] Received name from', remoteUid, ':', msg.name);
         if (msg.type === 'name' && msg.name) {
+          // Announce pilot on first name reception
+          if (!announcedUidsRef.current.has(remoteUid)) {
+            announcedUidsRef.current.add(remoteUid);
+            speak(`${msg.name} joined`);
+          }
           setRemotePilots(prev =>
             prev.map(p => p.uid === remoteUid ? {...p, name: msg.name} : p),
           );
@@ -327,6 +346,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     setIsMuted(false);
     isMutedRef.current = false;
     dataStreamIdRef.current = null;
+    announcedUidsRef.current.clear();
 
     const engine = await initEngine();
     engine.joinChannel('', config.channelName, 0, {});

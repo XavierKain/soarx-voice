@@ -17,6 +17,7 @@
 		251E6A342F66C5EA0079205C /* main.jsbundle in Resources */ = {isa = PBXBuildFile; fileRef = 251E6A332F66C5EA0079205C /* main.jsbundle */; };
 		356CD5CBC1C4AE7F28156711 /* inactivity_warning.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 93F3057EFF69D4E909C6D916 /* inactivity_warning.mp3 */; };
 		50B06CE23F958A3699B2A995 /* voice_unmute.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 05834232ED914EEBA7C06F17 /* voice_unmute.mp3 */; };
+		592D9806B2E304055F3CE3F7 /* TTSManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2351364724EC22A41F268D76 /* TTSManager.swift */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		87AC5606BF35C49D94992060 /* HapticManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 6B6333A8387ACC28B5B6A9CD /* HapticManager.m */; };
@@ -24,6 +25,7 @@
 		9D60CE20D2042E04EE36D6AC /* beep_double.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 355D75D50E6E2FC0FAF0567E /* beep_double.mp3 */; };
 		A1B2C3D42F78000000000001 /* inactivity_warning.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D42F78000000000002 /* inactivity_warning.mp3 */; };
 		A818D0CCEF987E2EFA2DC224 /* voice_mute.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A99F0168CA49634E8F39762D /* voice_mute.mp3 */; };
+		D398C0BBA36E17D2852BC08F /* TTSManager.m in Sources */ = {isa = PBXBuildFile; fileRef = F6F7EE5FC0A5AB17D84956F3 /* TTSManager.m */; };
 		F2D36FDBEA3E5F17654124D6 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6BE7A5A9CC84E9591B871ED /* HapticManager.swift */; };
 /* End PBXBuildFile section */
 
@@ -33,6 +35,7 @@
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = SoarXVoice/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = SoarXVoice/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = SoarXVoice/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		2351364724EC22A41F268D76 /* TTSManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TTSManager.swift; sourceTree = "<group>"; };
 		251E6A2A2F6605900079205C /* HIDModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HIDModule.m; sourceTree = "<group>"; };
 		251E6A2B2F6605900079205C /* HIDModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HIDModule.swift; sourceTree = "<group>"; };
 		251E6A2E2F66059C0079205C /* SoarXVoice-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SoarXVoice-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -51,6 +54,7 @@
 		A99F0168CA49634E8F39762D /* voice_mute.mp3 */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = audio.mp3; path = voice_mute.mp3; sourceTree = "<group>"; };
 		C6BE7A5A9CC84E9591B871ED /* HapticManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HapticManager.swift; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		F6F7EE5FC0A5AB17D84956F3 /* TTSManager.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TTSManager.m; sourceTree = "<group>"; };
 		FC0E281E0AFBFEC819D6D979 /* beep_single.mp3 */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = audio.mp3; path = beep_single.mp3; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -81,6 +85,8 @@
 				93F3057EFF69D4E909C6D916 /* inactivity_warning.mp3 */,
 				C6BE7A5A9CC84E9591B871ED /* HapticManager.swift */,
 				6B6333A8387ACC28B5B6A9CD /* HapticManager.m */,
+				2351364724EC22A41F268D76 /* TTSManager.swift */,
+				F6F7EE5FC0A5AB17D84956F3 /* TTSManager.m */,
 			);
 			name = SoarXVoice;
 			sourceTree = "<group>";
@@ -301,6 +307,8 @@
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
 				F2D36FDBEA3E5F17654124D6 /* HapticManager.swift in Sources */,
 				87AC5606BF35C49D94992060 /* HapticManager.m in Sources */,
+				592D9806B2E304055F3CE3F7 /* TTSManager.swift in Sources */,
+				D398C0BBA36E17D2852BC08F /* TTSManager.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
