@@ -9,6 +9,7 @@ import createAgoraRtcEngine, {
 } from 'react-native-agora';
 import {AGORA_APP_ID} from '@env';
 import {AppState, AppStateStatus, Platform, NativeModules, NativeEventEmitter} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Pilot, ConnectionState, ChannelConfig} from '../types';
 import {startForegroundService, stopForegroundService, updateForegroundMuteStatus} from '../services/AndroidForegroundService';
 import {appLog} from '../utils/logger';
@@ -91,7 +92,9 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   }, [resetActivity]);
 
   // TTS for pilot join/leave announcements
-  const speak = useCallback((text: string) => {
+  const speak = useCallback(async (text: string) => {
+    const val = await AsyncStorage.getItem('@soarx_tts_enabled');
+    if (val === 'false') return;
     if (Platform.OS === 'ios' && NativeModules.TTSManager) {
       NativeModules.TTSManager.speak(text);
     }
@@ -159,10 +162,9 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     engine.addListener('onUserOffline', (connection, remoteUid) => {
       // Announce departure with name before removing
       const pilot = remotePilotsRef.current.find(p => p.uid === remoteUid);
-      if (pilot) {
-        const name = pilot.name === 'Pilot' ? `Pilot ${remoteUid}` : pilot.name;
-        speak(`${name} left`);
-        appLog('TTS', `${name} left (uid=${remoteUid})`);
+      if (pilot && pilot.name !== 'Pilot') {
+        speak(`${pilot.name} left`);
+        appLog('TTS', `${pilot.name} left (uid=${remoteUid})`);
       }
       announcedUidsRef.current.delete(remoteUid);
       setRemotePilots(prev => {
@@ -187,9 +189,11 @@ export function AgoraProvider({children}: {children: ReactNode}) {
             announcedUidsRef.current.add(remoteUid);
             speak(`${msg.name} joined`);
           }
-          setRemotePilots(prev =>
-            prev.map(p => p.uid === remoteUid ? {...p, name: msg.name} : p),
-          );
+          setRemotePilots(prev => {
+            const updated = prev.map(p => p.uid === remoteUid ? {...p, name: msg.name} : p);
+            remotePilotsRef.current = updated;
+            return updated;
+          });
         }
       } catch (e) {
         console.warn('[Agora] onStreamMessage parse error:', e);

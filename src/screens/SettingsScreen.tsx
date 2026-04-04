@@ -10,6 +10,7 @@ import {
   NativeEventEmitter,
   ActivityIndicator,
   Share,
+  Switch,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Sound from 'react-native-sound';
@@ -36,6 +37,15 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
 
   // --- Debug ---
   const [logText, setLogText] = useState('');
+
+  // --- Voice Announcements ---
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+
+  useEffect(() => {
+    AsyncStorage.getItem('@soarx_tts_enabled').then(val => {
+      if (val !== null) setTtsEnabled(val !== 'false');
+    });
+  }, []);
 
   // --- Mute Feedback ---
   const [feedbackMode, setFeedbackMode] = useState<MuteFeedbackMode>('voice');
@@ -174,6 +184,26 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
           </View>
         </View>
 
+        {/* --- Voice Announcements Section --- */}
+        <Text style={[styles.sectionTitle, {color: colors.textSecondary}]}>VOICE ANNOUNCEMENTS</Text>
+        <View style={[styles.card, {backgroundColor: colors.bgCard, borderColor: colors.cardBorder}]}>
+          <View style={styles.toggleRow}>
+            <View style={{flex: 1}}>
+              <Text style={[styles.toggleLabel, {color: colors.text}]}>Pilot joined / left</Text>
+              <Text style={[styles.toggleHint, {color: colors.textMuted}]}>Announce when pilots connect or disconnect</Text>
+            </View>
+            <Switch
+              value={ttsEnabled}
+              onValueChange={(val) => {
+                setTtsEnabled(val);
+                AsyncStorage.setItem('@soarx_tts_enabled', String(val));
+              }}
+              trackColor={{false: colors.cardBorder, true: colors.primary}}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        </View>
+
         {/* --- Bluetooth Button Section --- */}
         <Text style={[styles.sectionTitle, {color: colors.textSecondary}]}>BLUETOOTH BUTTON</Text>
         <View style={[styles.card, {backgroundColor: colors.bgCard, borderColor: colors.cardBorder}]}>
@@ -266,7 +296,7 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
         <View style={[styles.card, {backgroundColor: colors.bgCard, borderColor: colors.cardBorder}]}>
           <View style={styles.aboutRow}>
             <Text style={[styles.aboutLabel, {color: colors.textSecondary}]}>Version</Text>
-            <Text style={[styles.aboutValue, {color: colors.text}]}>1.5</Text>
+            <Text style={[styles.aboutValue, {color: colors.text}]}>1.6</Text>
           </View>
         </View>
 
@@ -486,6 +516,19 @@ const styles = StyleSheet.create({
   },
 
   // About
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  toggleLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  toggleHint: {
+    fontSize: 12,
+    marginTop: 2,
+  },
   aboutRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

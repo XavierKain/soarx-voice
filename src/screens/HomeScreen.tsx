@@ -174,7 +174,7 @@ export function HomeScreen({onJoined, onSettings}: HomeScreenProps) {
         <Text style={styles.bleButtonText}>Settings</Text>
       </TouchableOpacity>
 
-      <Text style={styles.version}>v1.5</Text>
+      <Text style={styles.version}>v1.6</Text>
     </View>
     </TouchableWithoutFeedback>
   );
