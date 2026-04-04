@@ -144,7 +144,13 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        <Text style={[styles.title, {color: colors.text}]}>Settings</Text>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={onDone} activeOpacity={0.7} style={styles.closeButton}>
+            <Text style={[styles.closeButtonText, {color: colors.textSecondary}]}>✕</Text>
+          </TouchableOpacity>
+          <Text style={[styles.title, {color: colors.text}]}>Settings</Text>
+          <View style={styles.closeButton} />
+        </View>
 
         {/* --- Mute Feedback Section --- */}
         <Text style={[styles.sectionTitle, {color: colors.textSecondary}]}>MUTE FEEDBACK</Text>
@@ -333,14 +339,14 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
           ) : null}
         </View>
 
-      </ScrollView>
+        <TouchableOpacity
+          style={[styles.backButton, {backgroundColor: 'rgba(239, 68, 68, 0.10)', borderColor: 'rgba(239, 68, 68, 0.25)'}]}
+          onPress={onDone}
+          activeOpacity={0.7}>
+          <Text style={[styles.backButtonText, {color: '#EF4444'}]}>Back</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={onDone}
-        activeOpacity={0.7}>
-        <Text style={[styles.backButtonText, {color: colors.textSecondary}]}>Back</Text>
-      </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 }
@@ -355,13 +361,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: 60,
-    paddingBottom: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   title: {
     fontSize: fonts.title,
     fontWeight: '700',
     textAlign: 'center',
-    marginBottom: spacing.xl,
   },
   sectionTitle: {
     fontSize: fonts.label,
@@ -542,14 +547,36 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // Header
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xl,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: {
+    fontSize: 22,
+    fontWeight: '300',
+  },
+
   // Back button
   backButton: {
-    paddingVertical: spacing.md,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginBottom: Platform.OS === 'ios' ? spacing.lg : spacing.md,
+    marginTop: spacing.xl,
+    marginBottom: spacing.md,
     marginHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    borderWidth: 1,
   },
   backButtonText: {
     fontSize: 16,
+    fontWeight: '600',
   },
 });
