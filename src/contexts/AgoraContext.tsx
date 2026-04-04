@@ -159,8 +159,10 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     engine.addListener('onUserOffline', (connection, remoteUid) => {
       // Announce departure with name before removing
       const pilot = remotePilotsRef.current.find(p => p.uid === remoteUid);
-      if (pilot && pilot.name !== 'Pilot') {
-        speak(`${pilot.name} left`);
+      if (pilot) {
+        const name = pilot.name === 'Pilot' ? `Pilot ${remoteUid}` : pilot.name;
+        speak(`${name} left`);
+        appLog('TTS', `${name} left (uid=${remoteUid})`);
       }
       announcedUidsRef.current.delete(remoteUid);
       setRemotePilots(prev => {
