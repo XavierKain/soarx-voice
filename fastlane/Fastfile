@@ -62,14 +62,34 @@ platform :ios do
     app = Spaceship::ConnectAPI::App.find(APP_ID)
     UI.important("App: #{app.name} (#{app.bundle_id}) id=#{app.id}")
 
+    # Read through the REST API: spaceship's get_beta_testers returned an empty
+    # list for a group that the API had just accepted a tester into.
+    require "net/http"
+    require "json"
+
+    def asc_get(path)
+      uri = URI("https://api.appstoreconnect.apple.com/#{path}")
+      req = Net::HTTP::Get.new(uri)
+      req["Authorization"] = "Bearer #{Spaceship::ConnectAPI.token.text}"
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |h| h.request(req) }
+      JSON.parse(res.body)
+    end
+
     UI.important("--- Beta groups ---")
-    app.get_beta_groups.each do |g|
-      kind = g.is_internal_group ? "INTERNAL" : "EXTERNAL"
-      testers = g.get_beta_testers rescue []
-      UI.message("[#{kind}] \"#{g.name}\" id=#{g.id} — #{testers.count} tester(s)")
+    asc_get("v1/apps/#{app.id}/betaGroups")["data"].each do |g|
+      kind = g["attributes"]["isInternalGroup"] ? "INTERNAL" : "EXTERNAL"
+      testers = asc_get("v1/betaGroups/#{g['id']}/betaTesters")["data"] || []
+      UI.message("[#{kind}] \"#{g['attributes']['name']}\" id=#{g['id']} — #{testers.count} tester(s)")
       testers.each do |t|
-        UI.message("     - #{t.email} (#{t.first_name} #{t.last_name}) state=#{t.state}")
+        a = t["attributes"]
+        UI.message("     - #{a['email']} (#{a['firstName']} #{a['lastName']}) state=#{a['state']} invite=#{a['inviteType']}")
       end
+    end
+
+    UI.important("--- All beta testers on the app ---")
+    (asc_get("v1/apps/#{app.id}/betaTesters")["data"] || []).each do |t|
+      a = t["attributes"]
+      UI.message("  #{a['email']} state=#{a['state']} invite=#{a['inviteType']}")
     end
 
     UI.important("--- App Store Connect users ---")
