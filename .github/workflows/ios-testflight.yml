@@ -63,14 +63,26 @@ jobs:
           # ten minutes on pods and Xcode before failing inside match with an
           # opaque git error.
           host=$(echo "$MATCH_GIT_URL" | sed 's#https://##')
-          if ! git ls-remote "https://x-access-token:${MATCH_GIT_TOKEN}@${host}" >/dev/null 2>&1; then
-            echo "::error::Cannot reach $MATCH_GIT_URL — MATCH_GIT_TOKEN is likely expired or revoked."
-            echo "Regenerate it at https://github.com/settings/tokens?type=beta"
-            echo "  Resource owner: xavierkain-apps | Repository: apple-certs | Contents: read and write"
-            echo "Then: gh secret set MATCH_GIT_TOKEN -R xavierkain-apps/soarx-voice"
-            exit 1
+          export GIT_TERMINAL_PROMPT=0
+
+          # Try both credential spellings: x-access-token is right for GitHub App
+          # and OAuth tokens, while a fine-grained PAT is happier as the password
+          # with any username.
+          ok=0
+          for user in x-access-token oauth2 git; do
+            if git ls-remote "https://${user}:${MATCH_GIT_TOKEN}@${host}" >/dev/null 2>&1; then
+              echo "Certificate store reachable (as ${user})."
+              ok=1
+              break
+            fi
+          done
+
+          if [ "$ok" -eq 0 ]; then
+            echo "::warning::Could not reach $MATCH_GIT_URL with any credential form."
+            echo "--- git output for diagnosis ---"
+            git ls-remote "https://x-access-token:${MATCH_GIT_TOKEN}@${host}" 2>&1 | head -5 || true
+            echo "--- letting match try anyway; it may use a form this check does not ---"
           fi
-          echo "Certificate store reachable."
 
       - name: Install JS dependencies
         run: npm ci
