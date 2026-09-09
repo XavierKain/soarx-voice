@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.1
+- Bluetooth scan now says why it found nothing instead of failing silently: a
+  refused permission, a disabled radio or an unsupported device are each named,
+  with what to do about it. This is why a fresh install could show an empty list.
+- Bluetooth button no longer dies after a burst of presses: failed reconnections
+  are retried with backoff instead of being logged and forgotten, and a stalled
+  reconnection is detected and restarted
+- Presses made shortly after a reconnection are no longer swallowed
+- Unnamed Bluetooth devices are listed instead of hidden; iTag buttons are
+  starred and sorted first, with step-by-step pairing instructions
+- Lower voice latency: the audio scenario now favours responsiveness over jitter
+  smoothing
+- An incoming call shows "Call in progress" instead of the video pause control,
+  and the microphone is restored when the call ends
+- Auto-disconnect reasons are written to the debug log, so a disconnection in
+  flight can be explained afterwards
+
 ## v2.0
 - Voice announcements now work on Android (new native TTS module, routed through the call audio path like iOS)
 - Fixed accented pilot names ("Frédéric", "Loïc") arriving garbled to other pilots

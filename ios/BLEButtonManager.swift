@@ -32,6 +32,11 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
   private var lastSeenAdvertData: Data?
   private var scanModeActive = false
 
+  // A scan requested before the radio is ready is remembered and run on poweredOn.
+  private var scanPending = false
+  private var reconnectAttempts = 0
+  private let maxReconnectAttempts = 6
+
   override init() {
     super.init()
     centralManager = CBCentralManager(delegate: self, queue: nil)
@@ -56,11 +61,58 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
 
   // MARK: - JS Methods
 
+  /// Human-readable reason a scan cannot run, or nil when the radio is ready.
+  private func unavailableReason(_ state: CBManagerState) -> String? {
+    switch state {
+    case .poweredOn:   return nil
+    case .poweredOff:  return "bluetooth-off"
+    case .unauthorized: return "unauthorized"
+    case .unsupported: return "unsupported"
+    case .resetting:   return "resetting"
+    case .unknown:     return "unknown"
+    @unknown default:  return "unknown"
+    }
+  }
+
+  private func emitState() {
+    guard hasListeners, let cm = centralManager else { return }
+    let reason = unavailableReason(cm.state)
+    sendEvent(withName: "onBLEState", body: [
+      "state": cm.state.rawValue,
+      "ready": reason == nil,
+      "reason": reason ?? "ready"
+    ])
+  }
+
   @objc func startScan() {
-    guard let cm = centralManager, cm.state == .poweredOn else { return }
+    guard let cm = centralManager else { return }
+
+    // Right after launch the state is still .unknown, and the permission prompt
+    // has not been answered yet. Silently returning here made the scan look
+    // broken: the UI span for ten seconds and listed nothing.
+    if let reason = unavailableReason(cm.state) {
+      NSLog("[BLE] Scan requested but radio not ready (\(reason)) — queued")
+      scanPending = true
+      emitState()
+      return
+    }
+
+    scanPending = false
     discoveredPeripherals.removeAll()
     cm.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
     NSLog("[BLE] Scanning started")
+    emitState()
+  }
+
+  /// Lets JS ask for the current radio state without starting a scan.
+  @objc func getState(_ resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) {
+    let state = centralManager?.state ?? .unknown
+    let reason = unavailableReason(state)
+    resolve([
+      "state": state.rawValue,
+      "ready": reason == nil,
+      "reason": reason ?? "ready"
+    ])
   }
 
   @objc func stopScan() {
@@ -76,6 +128,11 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
         self.discoveredPeripherals[deviceUUID] = peripheral
         peripheral.delegate = self
         centralManager?.connect(peripheral, options: nil)
+      } else {
+        // The button is asleep and not in the system cache. Scanning wakes our
+        // knowledge of it; didDiscover will retry the connection.
+        NSLog("[BLE] Peripheral unknown — scanning to find it again")
+        centralManager?.scanForPeripherals(withServices: nil, options: nil)
       }
       return
     }
@@ -134,14 +191,18 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
   // MARK: - CBCentralManagerDelegate
 
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
-    NSLog("[BLE] Central state: \(central.state.rawValue)")
-    if hasListeners {
-      sendEvent(withName: "onBLEState", body: ["state": central.state.rawValue])
+    NSLog("[BLE] Central state: \(central.state.rawValue) (\(unavailableReason(central.state) ?? "ready"))")
+    emitState()
+
+    guard central.state == .poweredOn else { return }
+
+    // A scan asked for before the user answered the permission prompt runs now.
+    if scanPending {
+      NSLog("[BLE] Radio ready — running the queued scan")
+      startScan()
     }
-    if central.state == .poweredOn {
-      if let savedUUID = UserDefaults.standard.string(forKey: savedDeviceKey) {
-        connectToDevice(savedUUID)
-      }
+    if let savedUUID = UserDefaults.standard.string(forKey: savedDeviceKey) {
+      connectToDevice(savedUUID)
     }
   }
 
@@ -186,12 +247,33 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
       return
     }
 
-    // Normal scan mode: discover devices
-    guard let name = peripheral.name, !name.isEmpty else { return }
+    // A saved button we were told to reconnect to has reappeared.
+    if !scanModeActive,
+       let saved = UserDefaults.standard.string(forKey: savedDeviceKey),
+       saved == uuid, connectedPeripheral == nil {
+      NSLog("[BLE] Saved button reappeared — reconnecting")
+      discoveredPeripherals[peripheral.identifier] = peripheral
+      centralManager?.stopScan()
+      peripheral.delegate = self
+      centralManager?.connect(peripheral, options: nil)
+      return
+    }
+
+    // Normal scan mode: discover devices. Unnamed peripherals used to be
+    // dropped, which hid buttons that only advertise a name once connected.
+    let rawName = peripheral.name ?? ""
+    let name = rawName.isEmpty ? "Unnamed device" : rawName
+    let isITag = rawName.lowercased().contains("itag")
     discoveredPeripherals[peripheral.identifier] = peripheral
-    NSLog("[BLE] Found: \(name) (\(uuid)) RSSI=\(RSSI)")
+    NSLog("[BLE] Found: \(name) (\(uuid)) RSSI=\(RSSI) itag=\(isITag)")
     if hasListeners {
-      sendEvent(withName: "onDeviceFound", body: ["name": name, "uuid": uuid, "rssi": RSSI.intValue])
+      sendEvent(withName: "onDeviceFound", body: [
+        "name": name,
+        "uuid": uuid,
+        "rssi": RSSI.intValue,
+        "isNamed": !rawName.isEmpty,
+        "isITag": isITag
+      ])
     }
   }
 
@@ -201,6 +283,7 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
     buttonCharacteristics.removeAll()
     connectionTime = Date().timeIntervalSince1970
     userInitiatedDisconnect = false
+    reconnectAttempts = 0
     stopScan()
 
     let uuid = peripheral.identifier.uuidString
@@ -213,6 +296,27 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
 
   func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
     NSLog("[BLE] Failed to connect: \(error?.localizedDescription ?? "unknown")")
+    // Without a retry here a single failed reconnection left the button dead
+    // until it was power-cycled — the press-disconnect-reconnect loop never
+    // recovered on its own.
+    scheduleReconnect(peripheral.identifier.uuidString)
+  }
+
+  /// Retry a reconnection with backoff, then fall back to scanning.
+  private func scheduleReconnect(_ uuid: String) {
+    guard UserDefaults.standard.string(forKey: savedDeviceKey) == uuid else { return }
+    guard reconnectAttempts < maxReconnectAttempts else {
+      NSLog("[BLE] Giving up after \(reconnectAttempts) attempts — scanning instead")
+      reconnectAttempts = 0
+      centralManager?.scanForPeripherals(withServices: nil, options: nil)
+      return
+    }
+    reconnectAttempts += 1
+    let delay = min(0.5 * Double(reconnectAttempts), 3.0)
+    NSLog("[BLE] Reconnect attempt \(reconnectAttempts) in \(delay)s")
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+      self?.connectToDevice(uuid)
+    }
   }
 
   func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
@@ -229,9 +333,11 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
 
     // Detect disconnect-as-button-press (iTag pattern):
     // - Not user-initiated (not "Forget" button)
-    // - Was connected for at least 2 seconds (not a failed connection)
-    // - Debounce: at least 1s since last toggle
-    if !userInitiatedDisconnect && connectedDuration > 2.0 && (now - lastToggleTime) > 1.0 {
+    // - Connected long enough that this is a press, not a failed connection.
+    //   This was 2s, but reconnection takes ~0.5s, so any press within ~2.5s of
+    //   the previous one was silently swallowed.
+    // - Debounce against duplicate disconnect callbacks
+    if !userInitiatedDisconnect && connectedDuration > 0.8 && (now - lastToggleTime) > 0.6 {
       NSLog("[BLE] ★ BUTTON PRESS (disconnect pattern) from \(name)")
       lastToggleTime = now
       if hasListeners {
@@ -243,10 +349,18 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
     connectedPeripheral = nil
     buttonCharacteristics.removeAll()
 
-    // Auto-reconnect to saved device
+    // Auto-reconnect to saved device, with retries if it does not take
     if let savedUUID = UserDefaults.standard.string(forKey: savedDeviceKey), savedUUID == uuid {
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+      reconnectAttempts = 0
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
         self?.connectToDevice(savedUUID)
+      }
+      // If the reconnection never lands, didFailToConnect may not fire either;
+      // check back and restart the retry ladder.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+        guard let self = self, self.connectedPeripheral == nil else { return }
+        NSLog("[BLE] Reconnect did not land after 3s — retrying")
+        self.scheduleReconnect(savedUUID)
       }
     }
   }
@@ -329,8 +443,8 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
     let now = Date().timeIntervalSince1970
     NSLog("[BLE] ★ BUTTON PRESS from \(charUUID): \(hexValue) (\(bytes.count) bytes)")
 
-    // Debounce
-    if now - lastToggleTime < 0.5 { return }
+    // Debounce duplicate notifications from the same press
+    if now - lastToggleTime < 0.4 { return }
     lastToggleTime = now
 
     if hasListeners {

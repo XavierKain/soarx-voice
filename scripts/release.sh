@@ -77,10 +77,15 @@ git commit -m "release: v${VERSION} (build ${NEW_BUILD})"
 git tag -a "v${VERSION}" -m "v${VERSION}"
 
 if [ "$PUSH" -eq 1 ]; then
-  git push origin HEAD
-  git push origin "v${VERSION}"
+  # CI lives on the organisation remote; keep both in step.
+  for remote in origin org; do
+    git remote get-url "$remote" >/dev/null 2>&1 || continue
+    git push "$remote" HEAD
+    git push "$remote" "v${VERSION}"
+    info "Pushed to $remote"
+  done
   info "Tag pushed — CI is building iOS (TestFlight) and Android (AAB + APK)."
-  info "Watch: gh run watch"
+  info "Watch: gh run watch -R xavierkain-apps/soarx-voice"
 else
   warn "Not pushed. Run: git push origin HEAD && git push origin v${VERSION}"
 fi

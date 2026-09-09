@@ -44,6 +44,7 @@ interface AgoraContextValue {
   pauseForVideo: () => void;
   resumeFromVideo: () => void;
   isHeadphonesConnected: boolean;
+  isInterrupted: boolean;
   playEffect: (soundId: number, filePath: string) => void;
 }
 
@@ -76,6 +77,8 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   const [autoDisconnected, setAutoDisconnected] = useState(false);
   const [isPausedForVideo, setIsPausedForVideo] = useState(false);
   const [isHeadphonesConnected, setIsHeadphonesConnected] = useState(false);
+  // A phone call is not a video pause; the UI must not offer "Resume" for it.
+  const [isInterrupted, setIsInterrupted] = useState(false);
 
   const resetActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -151,9 +154,12 @@ export function AgoraProvider({children}: {children: ReactNode}) {
 
     engine.setChannelProfile(ChannelProfileType.ChannelProfileCommunication);
     engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
+    // AudioScenarioChatroom trades latency for smoothness with a generous jitter
+    // buffer. Chorus is Agora's low-latency scenario — pilots interrupt each
+    // other in flight, so responsiveness matters more than perfect smoothing.
     engine.setAudioProfile(
       AudioProfileType.AudioProfileSpeechStandard,
-      AudioScenarioType.AudioScenarioChatroom,
+      AudioScenarioType.AudioScenarioChorus,
     );
 
     // Remote user joined — add with temporary name, then broadcast our name
@@ -336,7 +342,8 @@ export function AgoraProvider({children}: {children: ReactNode}) {
         setWarningSecondsLeft(remaining);
         if (elapsed >= grace) {
           // Grace expired → auto-disconnect
-          console.log('[Agora] Inactivity auto-disconnect:', currentWarning);
+          appLog('Agora', `AUTO-DISCONNECT — reason=${currentWarning} ` +
+            `(${currentWarning === 'solo' ? 'alone in channel' : 'no audio activity'})`);
           setAutoDisconnected(true);
           leaveChannelRef.current();
           return;
@@ -347,7 +354,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
       // Check solo: alone for more than SOLO_TIMEOUT
       if (pilotCount === 0 && aloneStartRef.current) {
         if (now - aloneStartRef.current >= SOLO_TIMEOUT) {
-          console.log('[Agora] Solo timeout reached, showing warning');
+          appLog('Agora', 'Solo timeout — alone in channel, warning shown');
           warningStartRef.current = now;
           inactivityWarningRef.current = 'solo';
           setInactivityWarning('solo');
@@ -358,7 +365,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
 
       // Check silence: no audio activity for SILENCE_TIMEOUT
       if (pilotCount > 0 && now - lastActivityRef.current >= SILENCE_TIMEOUT) {
-        console.log('[Agora] Silence timeout reached, showing warning');
+        appLog('Agora', 'Silence timeout — no audio activity, warning shown');
         warningStartRef.current = now;
         inactivityWarningRef.current = 'silence';
         setInactivityWarning('silence');
@@ -477,10 +484,10 @@ export function AgoraProvider({children}: {children: ReactNode}) {
       appLog('AudioSession', `INTERRUPTED reason=${event.reason}`);
       const engine = engineRef.current;
       if (engine && connectionStateRef.current === 'connected') {
-        // Mute our mic but keep receiving remote audio
+        // Mute our mic but keep receiving remote audio. The channel is kept.
         engine.muteLocalAudioStream(true);
-        setIsPausedForVideo(true);
-        appLog('AudioSession', 'Mic muted — Camera can record video');
+        setIsInterrupted(true);
+        appLog('AudioSession', 'Mic muted for interruption — still in channel');
       }
     });
 
@@ -489,8 +496,9 @@ export function AgoraProvider({children}: {children: ReactNode}) {
       const engine = engineRef.current;
       if (engine && connectionStateRef.current === 'connected') {
         // Restore mute state to what it was before interruption
+        engine.enableAudio();
         engine.muteLocalAudioStream(isMutedRef.current);
-        setIsPausedForVideo(false);
+        setIsInterrupted(false);
         appLog('AudioSession', `Mic restored to muted=${isMutedRef.current}`);
       }
     });
@@ -641,6 +649,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
         pauseForVideo,
         resumeFromVideo,
         isHeadphonesConnected,
+        isInterrupted,
         playEffect: playEffectSound,
       }}>
       {children}

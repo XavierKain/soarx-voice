@@ -28,7 +28,19 @@ interface BLEDevice {
   name: string;
   uuid: string;
   rssi: number;
+  isNamed?: boolean;
+  isITag?: boolean;
 }
+
+// Why the radio cannot scan, in words a pilot can act on.
+const BLE_REASONS: Record<string, string> = {
+  unauthorized:
+    'Bluetooth permission was refused. Enable it in iOS Settings > SoarX Voice > Bluetooth, then scan again.',
+  'bluetooth-off': 'Bluetooth is turned off. Switch it on in Control Centre, then scan again.',
+  unsupported: 'This device does not support Bluetooth Low Energy.',
+  resetting: 'Bluetooth is restarting — try again in a moment.',
+  unknown: 'Waiting for Bluetooth to start up…',
+};
 
 interface SettingsScreenProps {
   onDone: () => void;
@@ -75,6 +87,7 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
   const [connectedName, setConnectedName] = useState<string | null>(null);
   const [savedUUID, setSavedUUID] = useState<string | null>(null);
   const [showScan, setShowScan] = useState(false);
+  const [bleProblem, setBleProblem] = useState<string | null>(null);
 
   useEffect(() => {
     if (!BLEButtonManager) return;
@@ -86,6 +99,13 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
   useEffect(() => {
     if (!BLEButtonManager) return;
     const emitter = new NativeEventEmitter(BLEButtonManager);
+
+    const stateSub = emitter.addListener(
+      'onBLEState',
+      (s: {ready: boolean; reason: string}) => {
+        setBleProblem(s.ready ? null : BLE_REASONS[s.reason] ?? `Bluetooth unavailable (${s.reason})`);
+      },
+    );
 
     const foundSub = emitter.addListener('onDeviceFound', (device: BLEDevice) => {
       setDevices(prev => {
@@ -109,6 +129,7 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
     });
 
     return () => {
+      stateSub.remove();
       foundSub.remove();
       connSub.remove();
       discSub.remove();
@@ -118,6 +139,7 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
   const startScan = useCallback(() => {
     if (!BLEButtonManager) return;
     setDevices([]);
+    setBleProblem(null);
     setScanning(true);
     BLEButtonManager.startScan();
     setTimeout(() => {
@@ -256,17 +278,30 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
                 )}
               </TouchableOpacity>
 
+              {bleProblem && (
+                <View style={[styles.tipBox, {borderColor: colors.amber, marginTop: spacing.md}]}>
+                  <Text style={[styles.tipTitle, {color: colors.amber}]}>Bluetooth unavailable</Text>
+                  <Text style={[styles.tipText, {color: colors.textSecondary}]}>{bleProblem}</Text>
+                </View>
+              )}
+
               {devices.length > 0 && (
                 <View style={styles.deviceList}>
-                  {devices.map(device => (
+                  {[...devices]
+                    .sort((a, b) => Number(b.isITag) - Number(a.isITag) || b.rssi - a.rssi)
+                    .map(device => (
                     <TouchableOpacity
                       key={device.uuid}
                       style={[styles.deviceRow, {backgroundColor: colors.bg, borderColor: colors.cardBorder, borderWidth: 1}]}
                       onPress={() => connectDevice(device.uuid)}
                       activeOpacity={0.7}>
                       <View style={styles.deviceInfo}>
-                        <Text style={[styles.deviceName, {color: colors.text}]}>{device.name}</Text>
-                        <Text style={[styles.deviceUUID, {color: colors.textMuted}]}>{device.uuid.substring(0, 8)}...</Text>
+                        <Text style={[styles.deviceName, {color: device.isITag ? colors.primary : colors.text}]}>
+                          {device.isITag ? '\u2605 ' : ''}{device.name}
+                        </Text>
+                        <Text style={[styles.deviceUUID, {color: colors.textMuted}]}>
+                          {device.isITag ? 'iTag button — tap to connect' : device.uuid.substring(0, 8) + '...'}
+                        </Text>
                       </View>
                       <Text style={[styles.deviceRSSI, {color: colors.textMuted}]}>{device.rssi} dBm</Text>
                     </TouchableOpacity>
@@ -274,9 +309,16 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
                 </View>
               )}
 
-              {scanning && devices.length === 0 && (
+              {scanning && devices.length === 0 && !bleProblem && (
                 <Text style={[styles.scanHint, {color: colors.textMuted}]}>
-                  Press the button on your device to make it discoverable...
+                  Press the button on your iTag now so it starts advertising...
+                </Text>
+              )}
+
+              {!scanning && devices.length === 0 && !bleProblem && (
+                <Text style={[styles.scanHint, {color: colors.textMuted}]}>
+                  Nothing found. Press the iTag button while scanning, and make sure
+                  it is not already paired in iOS Settings &gt; Bluetooth.
                 </Text>
               )}
 
@@ -292,9 +334,16 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
           )}
 
           <View style={[styles.tipBox, {borderColor: colors.cardBorder}]}>
-            <Text style={[styles.tipTitle, {color: colors.text}]}>Compatible buttons</Text>
+            <Text style={[styles.tipTitle, {color: colors.text}]}>How to pair an iTag</Text>
             <Text style={[styles.tipText, {color: colors.textSecondary}]}>
-              iTag Bluetooth trackers (~7 EUR), ESP32 custom buttons, or any BLE device with FFE0/FFE1 service
+              1. Do NOT pair it in iOS Settings &gt; Bluetooth — it connects through this app.{'\n'}
+              2. Tap Scan above.{'\n'}
+              3. Press the button on the iTag so it starts advertising.{'\n'}
+              4. Tap it in the list when it appears (marked with a star).
+            </Text>
+            <Text style={[styles.tipText, {color: colors.textMuted, marginTop: spacing.sm}]}>
+              iTag trackers (~7 EUR) are the recommended button. ESP32 boards and any
+              BLE device exposing an FFE0/FFE1 service also work.
             </Text>
           </View>
         </View>

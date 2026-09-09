@@ -18,7 +18,7 @@ interface VoiceScreenProps {
 
 export function VoiceScreen({onLeft}: VoiceScreenProps) {
   const {colors} = useTheme();
-  const {channelName, remotePilots, leaveChannel, connectionState, isSpeakerOn, toggleSpeaker, inactivityWarning, warningSecondsLeft, dismissWarning, autoDisconnected, isPausedForVideo, pauseForVideo, resumeFromVideo, isHeadphonesConnected} = useAgoraContext();
+  const {channelName, remotePilots, leaveChannel, connectionState, isSpeakerOn, toggleSpeaker, inactivityWarning, warningSecondsLeft, dismissWarning, autoDisconnected, isPausedForVideo, pauseForVideo, resumeFromVideo, isHeadphonesConnected, isInterrupted} = useAgoraContext();
   const {pilotName} = useUser();
   const {isMuted, toggle} = useMute();
   useBluetoothHID(toggle);
@@ -91,6 +91,14 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
             activeOpacity={0.7}>
             <Text style={styles.stayButtonText}>Stay Connected</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {isInterrupted && (
+        <View style={[styles.warningBanner, {backgroundColor: colors.amber + '20', borderColor: colors.amber}]}>
+          <Text style={[styles.warningText, {color: colors.amber, marginBottom: 0}]}>
+            Call in progress — your mic is paused, you're still in the channel
+          </Text>
         </View>
       )}
 

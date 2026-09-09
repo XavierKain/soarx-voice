@@ -71,16 +71,48 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
 
     // MARK: - JS Methods
 
+    /** Why a scan cannot run, or null when the radio is ready. */
+    private fun unavailableReason(): String? {
+        val adapter = bluetoothAdapter ?: return "unsupported"
+        if (!hasPermissions()) return "unauthorized"
+        if (!adapter.isEnabled) return "bluetooth-off"
+        if (adapter.bluetoothLeScanner == null) return "unsupported"
+        return null
+    }
+
+    private fun emitState() {
+        val reason = unavailableReason()
+        emit("onBLEState", Arguments.createMap().apply {
+            putBoolean("ready", reason == null)
+            putString("reason", reason ?: "ready")
+        })
+    }
+
+    @ReactMethod
+    fun getState(promise: Promise) {
+        val reason = unavailableReason()
+        promise.resolve(Arguments.createMap().apply {
+            putBoolean("ready", reason == null)
+            putString("reason", reason ?: "ready")
+        })
+    }
+
     @ReactMethod
     fun startScan() {
-        if (!hasPermissions()) {
-            Log.w(TAG, "Missing BLE permissions")
+        // Returning silently here made the scan look broken: the UI span for ten
+        // seconds and listed nothing, with no way to tell that the permission was
+        // missing or the radio was off.
+        val reason = unavailableReason()
+        if (reason != null) {
+            Log.w(TAG, "Scan requested but radio not ready ($reason)")
+            emitState()
             return
         }
-        val scanner = bluetoothAdapter?.bluetoothLeScanner ?: return
+        val scanner = bluetoothAdapter!!.bluetoothLeScanner
         discoveredDevices.clear()
         scanner.startScan(scanCallback)
         Log.i(TAG, "Scanning started")
+        emitState()
 
         // Stop after 10s
         handler.postDelayed({ stopScan() }, 10000)
@@ -157,18 +189,31 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device
-            val name = device.name ?: return
-            if (name.isBlank()) return
+            // Unnamed peripherals used to be dropped, which hid buttons that only
+            // advertise a name once connected.
+            val rawName = try { device.name ?: "" } catch (e: SecurityException) { "" }
+            val name = if (rawName.isBlank()) "Unnamed device" else rawName
+            val isITag = rawName.lowercase().contains("itag")
 
             val address = device.address
             if (discoveredDevices.containsKey(address)) return
             discoveredDevices[address] = device
 
-            Log.i(TAG, "Found: $name ($address) RSSI=${result.rssi}")
+            Log.i(TAG, "Found: $name ($address) RSSI=${result.rssi} itag=$isITag")
             emit("onDeviceFound", Arguments.createMap().apply {
                 putString("name", name)
                 putString("uuid", address)
                 putInt("rssi", result.rssi)
+                putBoolean("isNamed", rawName.isNotBlank())
+                putBoolean("isITag", isITag)
+            })
+        }
+
+        override fun onScanFailed(errorCode: Int) {
+            Log.w(TAG, "Scan failed: $errorCode")
+            emit("onBLEState", Arguments.createMap().apply {
+                putBoolean("ready", false)
+                putString("reason", "scan-failed-$errorCode")
             })
         }
     }
