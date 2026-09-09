@@ -64,9 +64,11 @@ jobs:
         with:
           name: soarxvoice-android-release
           retention-days: 30
+          # ABI splits mean there is no single app-release.apk: the build
+          # produces app-<abi>-release.apk plus app-universal-release.apk.
           path: |
-            android/app/build/outputs/bundle/release/app-release.aab
-            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/bundle/release/*.aab
+            android/app/build/outputs/apk/release/*.apk
 
       - name: Clean up secrets
         if: always()
