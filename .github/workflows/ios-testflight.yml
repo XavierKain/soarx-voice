@@ -38,10 +38,13 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
           AGORA_APP_ID: ${{ secrets.AGORA_APP_ID }}
         run: |
           missing=""
-          for v in ASC_KEY_P8_BASE64 ASC_KEY_ID ASC_ISSUER_ID APPLE_TEAM_ID MATCH_PASSWORD AGORA_APP_ID; do
+          for v in ASC_KEY_P8_BASE64 ASC_KEY_ID ASC_ISSUER_ID APPLE_TEAM_ID \
+                   MATCH_PASSWORD MATCH_GIT_URL MATCH_GIT_TOKEN AGORA_APP_ID; do
             [ -z "${!v}" ] && missing="$missing $v"
           done
           if [ -n "$missing" ]; then
@@ -71,7 +74,10 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_GIT_URL: https://github.com/${{ github.repository }}.git
+          # Shared certificate storage: Apple caps distribution certificates, so
+          # every app in the account reuses the one already held here.
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Build 11 is v2.0 locally; CI uploads start above it.
           BUILD_NUMBER: ${{ steps.bn.outputs.value }}
