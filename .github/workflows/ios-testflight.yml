@@ -54,32 +54,6 @@ jobs:
           fi
           echo "All required secrets present."
 
-      - name: Verify the certificate store is reachable
-        env:
-          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
-          MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
-        run: |
-          # A personal access token expires. Without this check the build spends
-          # ten minutes on pods and Xcode before failing inside match with an
-          # opaque git error.
-          # Authenticate exactly the way match does: a base64 Basic header, not
-          # credentials embedded in the URL. GitHub refuses URL-embedded
-          # credentials for fine-grained tokens, so the earlier form reported a
-          # failure for a token that worked perfectly well.
-          auth=$(printf 'x-access-token:%s' "$MATCH_GIT_TOKEN" | base64 | tr -d '\n')
-          if git -c http.extraheader="Authorization: Basic $auth" \
-                 ls-remote "$MATCH_GIT_URL" >/dev/null 2>&1; then
-            echo "Certificate store reachable."
-          else
-            echo "::error::Cannot reach the certificate store."
-            git -c http.extraheader="Authorization: Basic $auth" \
-                ls-remote "$MATCH_GIT_URL" 2>&1 | head -5 || true
-            echo "Regenerate the token at https://github.com/settings/tokens?type=beta"
-            echo "  Resource owner: xavierkain-apps | Repository: apple-certs | Contents: read and write"
-            echo "Then: gh secret set MATCH_GIT_TOKEN -R xavierkain-apps/soarx-voice"
-            exit 1
-          fi
-
       - name: Install JS dependencies
         run: npm ci
 
