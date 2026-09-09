@@ -105,6 +105,9 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 11
         versionName "2.0"
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"
+        }
     }
     signingConfigs {
         debug {
@@ -127,11 +130,42 @@ android {
     }
     splits {
         abi {
-            // Emulator ABIs stay in debug builds only; they double the release artifact.
+            // Per-ABI APKs for direct beta installs: ~1/3 the size of a universal
+            // APK. x86_64 is kept so the app runs on a desktop Android emulator.
             reset()
-            include "armeabi-v7a", "arm64-v8a"
+            enable true
+            include "armeabi-v7a", "arm64-v8a", "x86_64"
             universalApk true
-            enable false
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // SoarX Voice is voice-only: it joins in Communication profile with a
+            // speech audio profile and never publishes or subscribes to video.
+            // Agora ships its full video stack by default, which is ~half the
+            // binary. These extensions are loaded lazily by name and are never
+            // reached, so excluding them is safe.
+            //
+            // Deliberately kept: the AI echo-cancellation and noise-suppression
+            // extensions (valuable against wind noise in flight) and the audio
+            // codecs used by playEffect.
+            excludes += [
+                "**/libagora_clear_vision_extension.so",
+                "**/libagora_content_inspect_extension.so",
+                "**/libagora_face_capture_extension.so",
+                "**/libagora_face_detection_extension.so",
+                "**/libagora_lip_sync_extension.so",
+                "**/libagora_screen_capture_extension.so",
+                "**/libagora_segmentation_extension.so",
+                "**/libagora_spatial_audio_extension.so",
+                "**/libagora_audio_beauty_extension.so",
+                "**/libagora_video_av1_encoder_extension.so",
+                "**/libagora_video_encoder_extension.so",
+                "**/libagora_video_quality_analyzer_extension.so",
+                "**/libvideo_dec.so",
+                "**/libvideo_enc.so",
+            ]
         }
     }
     buildTypes {
