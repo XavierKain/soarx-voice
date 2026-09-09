@@ -114,37 +114,38 @@ platform :ios do
     if already
       UI.success("#{email} is already in #{group.name} — nothing to do.")
     else
-      # spaceship has moved this call around between versions; try the known
-      # spellings rather than pinning to one and burning a CI run to find out.
-      added = false
-      if Spaceship::ConnectAPI.respond_to?(:create_beta_tester)
-        Spaceship::ConnectAPI.create_beta_tester(
-          beta_group_id: group.id,
-          email: email,
-          first_name: user.first_name,
-          last_name: user.last_name
-        )
-        added = true
-      elsif group.respond_to?(:post_bulk_beta_tester_assignments)
-        group.post_bulk_beta_tester_assignments(beta_testers: [
-          {email: email, firstName: user.first_name, lastName: user.last_name}
-        ])
-        added = true
-      elsif Spaceship::ConnectAPI::BetaTester.respond_to?(:find)
-        tester = Spaceship::ConnectAPI::BetaTester.find(email)
-        if tester
-          tester.add_to_beta_groups(beta_group_ids: [group.id])
-          added = true
-        end
+      # Call the documented REST endpoint directly. spaceship's helpers for this
+      # have moved between versions and its bulk endpoint no longer exists on
+      # Apple's side, so going through the API contract is the stable option.
+      require "net/http"
+      require "json"
+
+      uri = URI("https://api.appstoreconnect.apple.com/v1/betaTesters")
+      req = Net::HTTP::Post.new(uri)
+      req["Authorization"] = "Bearer #{Spaceship::ConnectAPI.token.text}"
+      req["Content-Type"] = "application/json"
+      req.body = {
+        data: {
+          type: "betaTesters",
+          attributes: {
+            email: email,
+            firstName: user.first_name,
+            lastName: user.last_name
+          },
+          relationships: {
+            betaGroups: {data: [{type: "betaGroups", id: group.id}]}
+          }
+        }
+      }.to_json
+
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+
+      unless res.code.to_i.between?(200, 299)
+        UI.error("HTTP #{res.code}")
+        UI.error(res.body.to_s)
+        UI.user_error!("App Store Connect rejected the request.")
       end
 
-      unless added
-        UI.error("No usable spaceship API found. Available on ConnectAPI: " +
-                 Spaceship::ConnectAPI.methods.grep(/beta_tester/).join(', '))
-        UI.error("Available on BetaGroup instance: " +
-                 group.methods.grep(/beta_tester/).join(', '))
-        UI.user_error!("Could not add the tester — see the method lists above.")
-      end
       UI.success("Added #{email} to #{group.name}.")
     end
 
