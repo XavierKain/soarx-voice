@@ -1,158 +1,86 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 # ============================================================
-# SoarXVoice Release Script
-# Automates: version bump, build, TestFlight upload with notes
+# SoarX Voice release
+#
+# Bumps every version location, verifies the changelog, then tags.
+# Pushing the tag triggers .github/workflows/{ios-testflight,android-release}.
+#
+# The actual builds run in CI (iOS needs a macOS runner), so this script
+# is portable and does not require Xcode or the Android SDK locally.
+#
+#   ./scripts/release.sh 2.0
+#   ./scripts/release.sh 2.0 --no-push   # bump + commit + tag, push manually
 # ============================================================
 
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$PROJECT_DIR"
+cd "$(dirname "$0")/.."
 
-# --- Config (App Store Connect API) ---
-ASC_KEY_ID="${ASC_KEY_ID:-}"
-ASC_ISSUER_ID="${ASC_ISSUER_ID:-}"
-ASC_KEY_PATH="${ASC_KEY_PATH:-$HOME/.appstoreconnect/AuthKey_73PNP8Z93X.p8}"
-BUNDLE_ID="com.xavier.soarxvoice"
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+info()  { printf "${GREEN}[INFO]${NC} %s\n" "$1"; }
+warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
+fail()  { printf "${RED}[ERROR]${NC} %s\n" "$1"; exit 1; }
 
-# --- Colors ---
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
-error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
-
-# --- Parse version from argument or CHANGELOG ---
 VERSION="${1:-}"
-if [ -z "$VERSION" ]; then
-    echo ""
-    echo "Usage: ./scripts/release.sh <version>"
-    echo "  e.g. ./scripts/release.sh 1.5"
-    echo ""
-    exit 1
-fi
+PUSH=1
+[ "${2:-}" = "--no-push" ] && PUSH=0
 
-# --- Extract changelog for this version ---
-extract_changelog() {
-    local ver="$1"
-    local in_section=0
-    local notes=""
-    while IFS= read -r line; do
-        if echo "$line" | grep -q "^## v${ver}"; then
-            in_section=1
-            continue
-        fi
-        if [ $in_section -eq 1 ] && echo "$line" | grep -q "^## v"; then
-            break
-        fi
-        if [ $in_section -eq 1 ] && [ -n "$line" ]; then
-            notes="${notes}${line}\n"
-        fi
-    done < CHANGELOG.md
-    echo -e "$notes"
-}
+[ -z "$VERSION" ] && fail "Usage: ./scripts/release.sh <version> [--no-push]   e.g. 2.0 or 2.0.1"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || fail "Version must look like 2.0 or 2.0.1 (got '$VERSION')"
 
-CHANGELOG_NOTES=$(extract_changelog "$VERSION")
-if [ -z "$CHANGELOG_NOTES" ]; then
-    error "No changelog entry found for v${VERSION} in CHANGELOG.md. Add it first!"
-fi
+# --- changelog must document this version -------------------------------
+NOTES=$(awk -v v="## v${VERSION}" '
+  $0 == v {f=1; next}
+  f && /^## v/ {exit}
+  f && NF {print}
+' CHANGELOG.md)
+[ -z "$NOTES" ] && fail "No '## v${VERSION}' section in CHANGELOG.md. Add it first."
+
+# --- clean tree ---------------------------------------------------------
+[ -n "$(git status --porcelain)" ] && fail "Working tree is dirty. Commit or stash first."
+git rev-parse "v${VERSION}" >/dev/null 2>&1 && fail "Tag v${VERSION} already exists."
 
 info "Releasing v${VERSION}"
-echo ""
-echo "Changelog:"
-echo "$CHANGELOG_NOTES"
-echo ""
+printf '\n%s\n\n' "$NOTES"
 
-# --- Bump version numbers ---
-info "Bumping version to ${VERSION}..."
-
-# iOS: project.pbxproj
-sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = ${VERSION};/g" \
-    ios/SoarXVoice.xcodeproj/project.pbxproj
-
-# Increment build number
-CURRENT_BUILD=$(grep -m1 'CURRENT_PROJECT_VERSION' ios/SoarXVoice.xcodeproj/project.pbxproj | sed 's/[^0-9]//g')
+# --- build number: monotonic across both platforms ----------------------
+CURRENT_BUILD=$(grep -m1 'CURRENT_PROJECT_VERSION' ios/SoarXVoice.xcodeproj/project.pbxproj \
+  | tr -cd '0-9')
 NEW_BUILD=$((CURRENT_BUILD + 1))
-sed -i '' "s/CURRENT_PROJECT_VERSION = ${CURRENT_BUILD};/CURRENT_PROJECT_VERSION = ${NEW_BUILD};/g" \
-    ios/SoarXVoice.xcodeproj/project.pbxproj
 
-# Android: build.gradle
-CURRENT_VCODE=$(grep 'versionCode' android/app/build.gradle | sed 's/[^0-9]//g')
-NEW_VCODE=$((CURRENT_VCODE + 1))
-sed -i '' "s/versionCode ${CURRENT_VCODE}/versionCode ${NEW_VCODE}/" android/app/build.gradle
-sed -i '' "s/versionName \"[^\"]*\"/versionName \"${VERSION}\"/" android/app/build.gradle
+# --- bump: iOS ----------------------------------------------------------
+perl -pi -e "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = ${VERSION};/g" \
+  ios/SoarXVoice.xcodeproj/project.pbxproj
+perl -pi -e "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${NEW_BUILD};/g" \
+  ios/SoarXVoice.xcodeproj/project.pbxproj
 
-# HomeScreen version display
-sed -i '' "s/v[0-9][0-9]*\.[0-9][0-9]*/v${VERSION}/" src/screens/HomeScreen.tsx
+# --- bump: Android ------------------------------------------------------
+perl -pi -e "s/versionCode [0-9]+/versionCode ${NEW_BUILD}/" android/app/build.gradle
+perl -pi -e "s/versionName \"[^\"]*\"/versionName \"${VERSION}\"/" android/app/build.gradle
 
-info "iOS: v${VERSION} (build ${NEW_BUILD}) | Android: v${VERSION} (code ${NEW_VCODE})"
+# --- bump: JS single source of truth ------------------------------------
+perl -pi -e "s/export const APP_VERSION = '[^']*';/export const APP_VERSION = '${VERSION}';/" \
+  src/version.ts
+perl -pi -e "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION}.0\"/" package.json
 
-# --- Build Android APK ---
-info "Building Android APK..."
-npx react-native bundle --platform android --dev false \
-    --entry-file index.js \
-    --bundle-output android/app/src/main/assets/index.android.bundle \
-    --assets-dest android/app/src/main/res 2>&1 | tail -2
+info "iOS v${VERSION} (build ${NEW_BUILD}) | Android v${VERSION} (code ${NEW_BUILD})"
 
-cd android
-PATH="/opt/homebrew/opt/node@20/bin:$PATH" \
-JAVA_HOME=$(/usr/libexec/java_home -v 17) \
-./gradlew assembleRelease 2>&1 | tail -3
-cd "$PROJECT_DIR"
-info "Android APK ready: android/app/build/outputs/apk/release/app-release.apk"
+# --- verify -------------------------------------------------------------
+info "Running checks..."
+npm run typecheck
+npm run lint
+npm test
 
-# --- Build iOS Archive ---
-info "Archiving iOS..."
-cd ios
-xcodebuild -workspace SoarXVoice.xcworkspace \
-    -scheme SoarXVoice \
-    -sdk iphoneos \
-    -configuration Release \
-    -archivePath /tmp/SoarXVoice.xcarchive \
-    archive 2>&1 | grep -E "ARCHIVE (SUCCEEDED|FAILED)" || true
-cd "$PROJECT_DIR"
+# --- commit + tag -------------------------------------------------------
+git add -A
+git commit -m "release: v${VERSION} (build ${NEW_BUILD})"
+git tag -a "v${VERSION}" -m "v${VERSION}"
 
-# --- Export & Upload to TestFlight ---
-info "Uploading to TestFlight..."
-cat > /tmp/ExportOptions.plist << 'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>method</key>
-    <string>app-store</string>
-    <key>teamID</key>
-    <string>S96H22CQ8W</string>
-    <key>uploadSymbols</key>
-    <true/>
-    <key>destination</key>
-    <string>upload</string>
-</dict>
-</plist>
-PLIST
-
-xcodebuild -exportArchive \
-    -archivePath /tmp/SoarXVoice.xcarchive \
-    -exportOptionsPlist /tmp/ExportOptions.plist \
-    -exportPath /tmp/SoarXVoiceExport \
-    -allowProvisioningUpdates 2>&1 | grep -E "EXPORT (SUCCEEDED|FAILED)|Uploaded" || true
-
-# --- Set TestFlight "What to Test" via App Store Connect API ---
-set_testflight_notes() {
-    info "Setting TestFlight 'What to Test' notes..."
-    python3 "$PROJECT_DIR/scripts/set-testflight-notes.py" "$NEW_BUILD" "$CHANGELOG_NOTES"
-}
-
-set_testflight_notes
-
-# --- Summary ---
-echo ""
-echo "========================================="
-info "Release v${VERSION} complete!"
-echo "========================================="
-echo "  iOS:     v${VERSION} (build ${NEW_BUILD}) — uploaded to TestFlight"
-echo "  Android: v${VERSION} (code ${NEW_VCODE}) — android/app/build/outputs/apk/release/app-release.apk"
-echo ""
+if [ "$PUSH" -eq 1 ]; then
+  git push origin HEAD
+  git push origin "v${VERSION}"
+  info "Tag pushed — CI is building iOS (TestFlight) and Android (AAB + APK)."
+  info "Watch: gh run watch"
+else
+  warn "Not pushed. Run: git push origin HEAD && git push origin v${VERSION}"
+fi

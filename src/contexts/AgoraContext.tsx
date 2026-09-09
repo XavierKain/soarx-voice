@@ -13,8 +13,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Pilot, ConnectionState, ChannelConfig} from '../types';
 import {startForegroundService, stopForegroundService, updateForegroundMuteStatus} from '../services/AndroidForegroundService';
 import {appLog} from '../utils/logger';
+import {utf8Encode, utf8Decode} from '../utils/encoding';
 
 export type InactivityWarning = null | 'solo' | 'silence';
+
+// Inactivity guard
+const SOLO_TIMEOUT = 5 * 60 * 1000;      // 5 min alone → warning
+const SOLO_GRACE = 2 * 60 * 1000;        // 2 min grace after solo warning
+const SILENCE_TIMEOUT = 60 * 60 * 1000;  // 1h no audio → warning
+const SILENCE_GRACE = 5 * 60 * 1000;     // 5 min grace after silence warning
+const CHECK_INTERVAL = 1000;             // check every 1s for accurate countdown
 
 interface AgoraContextValue {
   connectionState: ConnectionState;
@@ -56,13 +64,6 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   const audioInterruptedRef = useRef(false);
   const announcedUidsRef = useRef<Set<number>>(new Set());
 
-  // Inactivity guard
-  const SOLO_TIMEOUT = 5 * 60 * 1000;      // 5 min alone → warning
-  const SOLO_GRACE = 2 * 60 * 1000;         // 2 min grace after solo warning
-  const SILENCE_TIMEOUT = 60 * 60 * 1000;   // 1h no audio → warning
-  const SILENCE_GRACE = 5 * 60 * 1000;      // 5 min grace after silence warning
-  const CHECK_INTERVAL = 1000;               // check every 1s for accurate countdown
-
   const lastActivityRef = useRef<number>(Date.now());
   const aloneStartRef = useRef<number | null>(null);
   const warningStartRef = useRef<number | null>(null);
@@ -91,28 +92,39 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     aloneStartRef.current = remotePilotsRef.current.length === 0 ? Date.now() : null;
   }, [resetActivity]);
 
+  // A join is only "done" once Agora reports CONNECTED. joinChannel() used to be
+  // fire-and-forget, so HomeScreen's try/catch could never fire and a failed join
+  // left the user staring at an empty channel.
+  const JOIN_TIMEOUT = 20000;
+  const joinSettleRef = useRef<{
+    resolve: () => void;
+    reject: (e: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+
+  const settleJoin = useCallback((error: Error | null) => {
+    const pending = joinSettleRef.current;
+    if (!pending) return;
+    joinSettleRef.current = null;
+    clearTimeout(pending.timer);
+    if (error) {
+      appLog('Agora', `join failed: ${error.message}`);
+      pending.reject(error);
+    } else {
+      appLog('Agora', 'join confirmed connected');
+      pending.resolve();
+    }
+  }, []);
+
   // TTS for pilot join/leave announcements
   const speak = useCallback(async (text: string) => {
     const val = await AsyncStorage.getItem('@soarx_tts_enabled');
     if (val === 'false') return;
-    if (Platform.OS === 'ios' && NativeModules.TTSManager) {
+    if (NativeModules.TTSManager) {
       NativeModules.TTSManager.speak(text);
     }
     appLog('TTS', text);
   }, []);
-
-  // Encode string to Uint8Array (Hermes-compatible, no TextEncoder needed)
-  const strToBytes = (str: string): Uint8Array => {
-    const arr = new Uint8Array(str.length);
-    for (let i = 0; i < str.length; i++) arr[i] = str.charCodeAt(i) & 0xff;
-    return arr;
-  };
-  const bytesToStr = (buf: any): string => {
-    const bytes = new Uint8Array(buf);
-    let str = '';
-    for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
-    return str;
-  };
 
   // Send pilot name to all users in the channel via data stream
   const broadcastName = useCallback((engine: IRtcEngine) => {
@@ -122,7 +134,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
         dataStreamIdRef.current = streamId;
       }
       const msg = JSON.stringify({type: 'name', name: pilotNameRef.current});
-      const data = strToBytes(msg);
+      const data = utf8Encode(msg);
       engine.sendStreamMessage(dataStreamIdRef.current!, data, data.length);
       console.log('[Agora] Broadcast name:', pilotNameRef.current);
     } catch (e) {
@@ -162,10 +174,9 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     engine.addListener('onUserOffline', (connection, remoteUid) => {
       // Announce departure with name before removing
       const pilot = remotePilotsRef.current.find(p => p.uid === remoteUid);
-      if (pilot && pilot.name !== 'Pilot') {
-        speak(`${pilot.name} left`);
-        appLog('TTS', `${pilot.name} left (uid=${remoteUid})`);
-      }
+      const departed = pilot && pilot.name !== 'Pilot' ? pilot.name : 'A pilot';
+      speak(`${departed} left`);
+      appLog('TTS', `${departed} left (uid=${remoteUid})`);
       announcedUidsRef.current.delete(remoteUid);
       setRemotePilots(prev => {
         const updated = prev.filter(p => p.uid !== remoteUid);
@@ -180,7 +191,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     // Receive data stream messages (pilot names)
     engine.addListener('onStreamMessage', (connection, remoteUid, streamId, data) => {
       try {
-        const text = bytesToStr(data);
+        const text = utf8Decode(data);
         const msg = JSON.parse(text);
         console.log('[Agora] Received name from', remoteUid, ':', msg.name);
         if (msg.type === 'name' && msg.name) {
@@ -200,7 +211,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
       }
     });
 
-    engine.addListener('onAudioVolumeIndication', (connection, speakers, totalVolume) => {
+    engine.addListener('onAudioVolumeIndication', (connection, speakers, _totalVolume) => {
       // Detect any audio activity (someone speaking) → reset inactivity
       const hasActivity = speakers.some(s => (s.volume ?? 0) > 30);
       if (hasActivity) {
@@ -213,20 +224,25 @@ export function AgoraProvider({children}: {children: ReactNode}) {
         }
       }
 
-      setRemotePilots(prev =>
-        prev.map(pilot => {
+      // Fires 4x/second for the whole flight. Only re-render when a pilot's
+      // volume bucket or speaking status actually moved.
+      setRemotePilots(prev => {
+        let changed = false;
+        const next = prev.map(pilot => {
           const speaker = speakers.find(s => s.uid === pilot.uid);
-          if (speaker) {
-            const volume = speaker.volume ?? 0;
-            return {
-              ...pilot,
-              audioVolume: volume,
-              status: volume > 30 ? 'speaking' : 'listening',
-            };
-          }
-          return pilot;
-        }),
-      );
+          if (!speaker) return pilot;
+          const volume = speaker.volume ?? 0;
+          const status = volume > 30 ? 'speaking' as const : 'listening' as const;
+          // Quantise the volume so tiny fluctuations don't force a render
+          const bucket = Math.round(volume / 16) * 16;
+          if (pilot.status === status && pilot.audioVolume === bucket) return pilot;
+          changed = true;
+          return {...pilot, audioVolume: bucket, status};
+        });
+        if (!changed) return prev;
+        remotePilotsRef.current = next;
+        return next;
+      });
     });
 
     engine.addListener('onConnectionStateChanged', (connection, state) => {
@@ -235,10 +251,22 @@ export function AgoraProvider({children}: {children: ReactNode}) {
         2: 'connecting',
         3: 'connected',
         4: 'reconnecting',
+        5: 'failed',
       };
       const mapped = stateMap[state] ?? 'disconnected';
       connectionStateRef.current = mapped;
       setConnectionState(mapped);
+      if (mapped === 'connected') settleJoin(null);
+      if (mapped === 'failed') settleJoin(new Error('Connection failed'));
+    });
+
+    // Surface Agora errors instead of hanging on "Connecting..." forever
+    engine.addListener('onError', (err: number, msg: string) => {
+      appLog('Agora', `onError code=${err} msg=${msg}`);
+      // 17 = join rejected, 110 = invalid token, 109 = token expired
+      if (err === 17 || err === 109 || err === 110) {
+        settleJoin(new Error(`Agora error ${err}`));
+      }
     });
 
     // Audio interruption handling (e.g. Camera app takes mic for video recording)
@@ -273,9 +301,9 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     engine.enableAudioVolumeIndication(250, 3, true);
     engineRef.current = engine;
     return engine;
-  }, [broadcastName, resetActivity]);
+  }, [broadcastName, resetActivity, settleJoin, speak]);
 
-  const stopInactivityTimer = () => {
+  const stopInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current) {
       clearInterval(inactivityTimerRef.current);
       inactivityTimerRef.current = null;
@@ -284,9 +312,9 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     inactivityWarningRef.current = null;
     setInactivityWarning(null);
     setWarningSecondsLeft(0);
-  };
+  }, []);
 
-  const startInactivityTimer = () => {
+  const startInactivityTimer = useCallback(() => {
     stopInactivityTimer();
     lastActivityRef.current = Date.now();
     aloneStartRef.current = Date.now(); // start alone until someone joins
@@ -337,7 +365,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
         setWarningSecondsLeft(Math.ceil(SILENCE_GRACE / 1000));
       }
     }, CHECK_INTERVAL);
-  };
+  }, [stopInactivityTimer]);
 
   const joinChannel = useCallback(async (config: ChannelConfig) => {
     setConnectionState('connecting');
@@ -355,8 +383,33 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     announcedUidsRef.current.clear();
 
     const engine = await initEngine();
+
+    const connected = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => settleJoin(new Error('Connection timed out')),
+        JOIN_TIMEOUT,
+      );
+      joinSettleRef.current = {resolve, reject, timer};
+    });
+
     engine.joinChannel('', config.channelName, 0, {});
     engine.muteLocalAudioStream(false);
+
+    try {
+      await connected;
+    } catch (e) {
+      // Roll back so the user lands back on Home in a clean state
+      stopInactivityTimer();
+      try {
+        engine.leaveChannel();
+      } catch {}
+      setConnectionState('disconnected');
+      connectionStateRef.current = 'disconnected';
+      setChannelName('');
+      channelNameRef.current = '';
+      throw e;
+    }
+
     startForegroundService(config.channelName);
     startInactivityTimer();
 
@@ -364,7 +417,7 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     setTimeout(() => broadcastName(engine), 1000);
     setTimeout(() => broadcastName(engine), 3000);
     setTimeout(() => broadcastName(engine), 6000);
-  }, [initEngine, broadcastName]);
+  }, [initEngine, broadcastName, settleJoin, startInactivityTimer, stopInactivityTimer]);
 
   const leaveChannel = useCallback(async () => {
     appLog('Agora', 'leaveChannel() START');
@@ -386,7 +439,25 @@ export function AgoraProvider({children}: {children: ReactNode}) {
     setIsMuted(false);
     isMutedRef.current = false;
     dataStreamIdRef.current = null;
+    announcedUidsRef.current.clear();
+    audioInterruptedRef.current = false;
+    setIsPausedForVideo(false);
     appLog('Agora', 'leaveChannel() END');
+  }, [stopInactivityTimer]);
+
+  // Release the native engine when the provider unmounts
+  useEffect(() => {
+    return () => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      try {
+        engine.leaveChannel();
+        engine.release();
+      } catch (e) {
+        console.warn('[Agora] release error:', e);
+      }
+      engineRef.current = null;
+    };
   }, []);
 
   // Keep ref in sync so the inactivity timer can call leaveChannel without circular deps
@@ -434,7 +505,9 @@ export function AgoraProvider({children}: {children: ReactNode}) {
       if (nextState === 'active' && audioInterruptedRef.current && engineRef.current) {
         console.log('[Agora] AppState active — reclaiming mic after interruption');
         audioInterruptedRef.current = false;
-        engineRef.current.enableLocalAudio(true);
+        engineRef.current.enableAudio();
+        engineRef.current.muteLocalAudioStream(isMutedRef.current);
+        setIsPausedForVideo(false);
       }
     };
     const sub = AppState.addEventListener('change', handleAppState);

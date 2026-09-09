@@ -1,97 +1,116 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# SoarX Voice
 
-# Getting Started
+Push-to-talk voice channels for paraglider pilots. Built on Agora RTC, with a
+Bluetooth mute button so you can talk without taking your hands off the brakes.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+- **iOS** — TestFlight (bundle `com.xavier.soarxvoice`)
+- **Android** — signed AAB / APK (`com.soarxvoice`, minSdk 24)
 
-## Step 1: Start Metro
+## Features
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+- Named voice channels, joinable with a short code (`TARIFA-01`)
+- BLE button (iTag, ESP32, any FFE0/FFE1 device) toggles mute with the screen locked
+- Spoken announcements when a pilot joins or leaves
+- Audio + haptic feedback on mute/unmute (voice or beeps)
+- Video mode: releases the mic so the Camera app can record
+- Auto-disconnect when alone for 5 min, or after 1 h of silence — saves Agora minutes
+- Dark and light themes
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+## Setup
 
-```sh
-# Using npm
-npm start
-
-# OR using Yarn
-yarn start
-```
-
-## Step 2: Build and run your app
-
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
+Requires Node 22+.
 
 ```sh
-# Using npm
-npm run android
-
-# OR using Yarn
-yarn android
+npm install
+cp .env.example .env      # then fill in AGORA_APP_ID
 ```
 
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+**iOS** (macOS only):
 
 ```sh
 bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
+bundle exec pod install --project-directory=ios
 npm run ios
-
-# OR using Yarn
-yarn ios
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+**Android**:
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+```sh
+npm run android
+```
 
-## Step 3: Modify your app
+## Checks
 
-Now that you have successfully run the app, let's make changes!
+```sh
+npm run typecheck
+npm run lint
+npm test
+```
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+## Releasing
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+Builds run in GitHub Actions — iOS needs a macOS runner, so releases are not cut
+from a developer machine.
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+1. Add a `## v<version>` section to `CHANGELOG.md`.
+2. Run `./scripts/release.sh <version>`.
 
-## Congratulations! :tada:
+The script bumps every version location (Xcode `MARKETING_VERSION` /
+`CURRENT_PROJECT_VERSION`, Gradle `versionName` / `versionCode`, `src/version.ts`,
+`package.json`), runs the checks, commits and pushes a `v<version>` tag. The tag
+triggers both release workflows.
 
-You've successfully run and modified your React Native App. :partying_face:
+You can also run either workflow manually from the Actions tab
+(`workflow_dispatch`).
 
-### Now what?
+### Required repository secrets
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+| Secret | Used by | What it is |
+|---|---|---|
+| `AGORA_APP_ID` | both | Agora RTC App ID |
+| `ASC_KEY_ID` | iOS | App Store Connect API key ID |
+| `ASC_ISSUER_ID` | iOS | App Store Connect issuer UUID |
+| `ASC_PRIVATE_KEY` | iOS | Full contents of the `AuthKey_*.p8` |
+| `APPLE_TEAM_ID` | iOS | Apple Developer team ID |
+| `ANDROID_KEYSTORE_BASE64` | Android | `base64 -w0 soarxvoice-release.keystore` |
+| `ANDROID_KEYSTORE_PASSWORD` | Android | Keystore password |
+| `ANDROID_KEY_ALIAS` | Android | Key alias (`soarxvoice`) |
+| `ANDROID_KEY_PASSWORD` | Android | Key password |
 
-# Troubleshooting
+The App Store Connect key needs the **App Manager** role so `xcodebuild
+-allowProvisioningUpdates` can manage certificates and profiles.
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+## Signing
 
-# Learn More
+Release signing credentials are never committed. Gradle resolves them from
+`android/keystore.properties` (gitignored, for local builds) and falls back to
+environment variables (for CI). A checkout without either still builds — it just
+falls back to debug signing.
 
-To learn more about React Native, take a look at the following resources:
+> **Back up `android/app/soarxvoice-release.keystore`.** Losing it means the app
+> can never be updated on Google Play under the same package name.
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+## Architecture
+
+```
+src/
+  contexts/     AgoraContext (RTC engine, channel state), Theme, User
+  hooks/        useMute (feedback + toggle), useBluetoothHID
+  screens/      Home, Voice, Settings
+  components/   MuteButton, PilotList, ChannelBadge
+  utils/        encoding (UTF-8 for the data stream), sounds, logger
+
+ios/            Swift native modules: AudioSession, BLEButton, HID, Haptics, TTS
+android/        Kotlin equivalents: BLEButtonManager, HIDModule, TTSModule,
+                AudioForegroundService
+```
+
+Pilot names are exchanged over an Agora data stream, UTF-8 encoded by hand
+(Hermes has no `TextEncoder`).
+
+## Known limitations
+
+- Channels are joined with an empty Agora token, so the App ID alone grants
+  access to any channel. A token server is the next security step.
+- R8 minification is disabled on Android release builds until the beta has been
+  device-tested; keep rules are already in `proguard-rules.pro`.

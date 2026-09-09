@@ -1,0 +1,131 @@
+name: iOS — TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Override CFBundleVersion (leave empty to use the run number offset)"
+        required: false
+        type: string
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Write .env
+        env:
+          AGORA_APP_ID: ${{ secrets.AGORA_APP_ID }}
+        run: |
+          if [ -z "$AGORA_APP_ID" ]; then
+            echo "::error::Secret AGORA_APP_ID is not set"; exit 1
+          fi
+          echo "AGORA_APP_ID=$AGORA_APP_ID" > .env
+
+      - name: Install CocoaPods
+        run: bundle exec pod install --project-directory=ios
+
+      - name: Set build number
+        id: build
+        run: |
+          BUILD="${{ inputs.build_number }}"
+          if [ -z "$BUILD" ]; then BUILD=$(( 11 + GITHUB_RUN_NUMBER )); fi
+          echo "number=$BUILD" >> "$GITHUB_OUTPUT"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" ios/SoarXVoice/Info.plist 2>/dev/null || true
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = $BUILD;/g" \
+            ios/SoarXVoice.xcodeproj/project.pbxproj
+          echo "Building CFBundleVersion $BUILD"
+
+      - name: Write App Store Connect API key
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          if [ -z "$ASC_PRIVATE_KEY" ]; then
+            echo "::error::Secret ASC_PRIVATE_KEY is not set"; exit 1
+          fi
+          mkdir -p ~/private_keys
+          printf '%s\n' "$ASC_PRIVATE_KEY" > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
+      - name: Archive
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcodebuild -workspace ios/SoarXVoice.xcworkspace \
+            -scheme SoarXVoice \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/SoarXVoice.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            archive
+
+      - name: Export and upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>uploadSymbols</key><true/>
+            <key>destination</key><string>upload</string>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/SoarXVoice.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Set TestFlight "What to Test"
+        continue-on-error: true
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_PATH: /Users/runner/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+        run: |
+          pip3 install --quiet pyjwt cryptography
+          NOTES=$(awk '/^## v/{if(f)exit; if($0 ~ /^## v2\.0/)f=1; next} f' CHANGELOG.md)
+          python3 scripts/set-testflight-notes.py "${{ steps.build.outputs.number }}" "$NOTES"
+
+      - name: Clean up secrets
+        if: always()
+        run: rm -rf ~/private_keys .env

@@ -6,6 +6,8 @@ import {generateChannelName, isValidChannelName} from '../utils/channelGenerator
 import {useAgoraContext} from '../contexts/AgoraContext';
 import {colors as defaultColors, fonts, spacing, radius} from '../theme';
 import {useTheme} from '../contexts/ThemeContext';
+import {APP_VERSION} from '../version';
+import {appLog} from '../utils/logger';
 
 const FAVORITES_KEY = '@soarx_favorite_channels';
 const DEFAULT_CHANNEL = 'TARIFA-01';
@@ -53,12 +55,23 @@ export function HomeScreen({onJoined, onSettings}: HomeScreenProps) {
   const handleGenerateChannel = () => { setChannel(generateChannelName()); };
 
   const requestMicPermission = async (): Promise<boolean> => {
-    if (Platform.OS === 'android') {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-        { title: 'Microphone Permission', message: 'SoarX Voice needs microphone access for in-flight communication.', buttonPositive: 'Allow' },
-      );
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
+    if (Platform.OS !== 'android') return true;
+
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+      { title: 'Microphone Permission', message: 'SoarX Voice needs microphone access for in-flight communication.', buttonPositive: 'Allow' },
+    );
+    if (granted !== PermissionsAndroid.RESULTS.GRANTED) return false;
+
+    // Android 13+ suppresses the foreground-service notification without this.
+    // Not being able to show it is not a reason to block the flight.
+    if (Number(Platform.Version) >= 33) {
+      try {
+        await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+          { title: 'Notifications', message: 'Lets SoarX Voice show the channel status while you fly.', buttonPositive: 'Allow' },
+        );
+      } catch {}
     }
     return true;
   };
@@ -75,7 +88,12 @@ export function HomeScreen({onJoined, onSettings}: HomeScreenProps) {
       await joinChannel({channelName: channel, pilotName});
       onJoined();
     } catch (error) {
-      Alert.alert('Connection Error', 'Unable to join channel. Please check your connection.');
+      appLog('Join', `failed: ${error instanceof Error ? error.message : String(error)}`);
+      Alert.alert(
+        'Connection Failed',
+        'Could not join the channel. Check your network coverage and try again.',
+      );
+    } finally {
       setIsJoining(false);
     }
   };
@@ -127,22 +145,28 @@ export function HomeScreen({onJoined, onSettings}: HomeScreenProps) {
               maxLength={30}
               returnKeyType="done"
             />
-            <TouchableOpacity style={styles.iconButton} onPress={toggleFavorite} activeOpacity={0.7}>
-              <Text style={[styles.iconButtonText, isFavorite && styles.iconButtonTextActive]}>
+            <TouchableOpacity
+              style={[styles.iconButton, {backgroundColor: colors.primaryLight, borderColor: colors.primaryBorder}]}
+              onPress={toggleFavorite}
+              activeOpacity={0.7}>
+              <Text style={[styles.iconButtonText, {color: colors.primary}, isFavorite && styles.iconButtonTextActive]}>
                 {isFavorite ? '\u2605' : '\u2606'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton} onPress={handleGenerateChannel} activeOpacity={0.7}>
-              <Text style={styles.iconButtonText}>{'\uD83C\uDFB2'}</Text>
+            <TouchableOpacity
+              style={[styles.iconButton, {backgroundColor: colors.primaryLight, borderColor: colors.primaryBorder}]}
+              onPress={handleGenerateChannel}
+              activeOpacity={0.7}>
+              <Text style={[styles.iconButtonText, {color: colors.primary}]}>{'\uD83C\uDFB2'}</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.hint}>Share this code with your group</Text>
+          <Text style={[styles.hint, {color: colors.textMuted}]}>Share this code with your group</Text>
         </View>
       </View>
 
       {favorites.length > 0 && (
         <View style={styles.favoritesBlock}>
-          <Text style={styles.favoritesLabel}>FAVORITES</Text>
+          <Text style={[styles.favoritesLabel, {color: colors.textSecondary}]}>FAVORITES</Text>
           <FlatList
             data={favorites}
             horizontal
@@ -150,10 +174,18 @@ export function HomeScreen({onJoined, onSettings}: HomeScreenProps) {
             showsHorizontalScrollIndicator={false}
             renderItem={({item}) => (
               <TouchableOpacity
-                style={[styles.favChip, item === channel && styles.favChipActive]}
+                style={[
+                  styles.favChip,
+                  {backgroundColor: colors.primaryLight, borderColor: colors.primaryBorder},
+                  item === channel && {backgroundColor: colors.primary, borderColor: colors.primary},
+                ]}
                 onPress={() => setChannel(item)}
                 activeOpacity={0.7}>
-                <Text style={[styles.favChipText, item === channel && styles.favChipTextActive]}>{item}</Text>
+                <Text style={[
+                  styles.favChipText,
+                  {color: colors.primary},
+                  item === channel && {color: colors.white},
+                ]}>{item}</Text>
               </TouchableOpacity>
             )}
           />
@@ -171,10 +203,10 @@ export function HomeScreen({onJoined, onSettings}: HomeScreenProps) {
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.bleButton} onPress={onSettings} activeOpacity={0.7}>
-        <Text style={styles.bleButtonText}>Settings</Text>
+        <Text style={[styles.bleButtonText, {color: colors.textSecondary}]}>Settings</Text>
       </TouchableOpacity>
 
-      <Text style={styles.version}>v1.6</Text>
+      <Text style={[styles.version, {color: colors.textDim}]}>v{APP_VERSION}</Text>
     </View>
     </TouchableWithoutFeedback>
   );

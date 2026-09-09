@@ -55,9 +55,30 @@ react {
 }
 
 /**
- * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
+ * Proguard/R8 minification.
+ *
+ * Deliberately OFF for the v2.0 beta: Agora and React Native both rely on
+ * reflection, and a minification regression only shows up at runtime — which
+ * cannot be verified from a CI build. Keep rules are already written in
+ * proguard-rules.pro; flip this to true once the beta has been device-tested.
  */
 def enableProguardInReleaseBuilds = false
+
+/**
+ * Release signing credentials.
+ *
+ * Never hardcode these. Resolution order:
+ *   1. android/keystore.properties  (local dev, gitignored)
+ *   2. environment variables        (CI)
+ */
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+def signingProp = { String key, String envName ->
+    return keystoreProps.getProperty(key) ?: System.getenv(envName)
+}
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -82,8 +103,8 @@ android {
         applicationId "com.soarxvoice"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 4
-        versionName "1.4"
+        versionCode 11
+        versionName "2.0"
     }
     signingConfigs {
         debug {
@@ -93,10 +114,22 @@ android {
             keyPassword 'android'
         }
         release {
-            storeFile file('soarxvoice-release.keystore')
-            storePassword 'soarxvoice2026'
-            keyAlias 'soarxvoice'
-            keyPassword 'soarxvoice2026'
+            def storePath = signingProp('storeFile', 'ANDROID_KEYSTORE_FILE')
+            if (storePath != null) {
+                storeFile file(storePath)
+                storePassword signingProp('storePassword', 'ANDROID_KEYSTORE_PASSWORD')
+                keyAlias signingProp('keyAlias', 'ANDROID_KEY_ALIAS')
+                keyPassword signingProp('keyPassword', 'ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+    splits {
+        abi {
+            // Emulator ABIs stay in debug builds only; they double the release artifact.
+            reset()
+            include "armeabi-v7a", "arm64-v8a"
+            universalApk true
+            enable false
         }
     }
     buildTypes {
@@ -104,7 +137,10 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.release
+            // Fall back to debug signing so a checkout without credentials still builds
+            signingConfig signingProp('storeFile', 'ANDROID_KEYSTORE_FILE') != null
+                ? signingConfigs.release
+                : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

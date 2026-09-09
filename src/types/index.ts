@@ -16,7 +16,7 @@ export interface Pilot {
 }
 
 /** État de connexion au canal */
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'failed';
 
 /** Paramètres de connexion */
 export interface ChannelConfig {

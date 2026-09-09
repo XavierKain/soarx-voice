@@ -14,9 +14,11 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Sound from 'react-native-sound';
-import {colors as defaultColors, fonts, spacing, radius} from '../theme';
+import {fonts, spacing, radius} from '../theme';
 import {getLogs, clearLogs} from '../utils/logger';
 import {useTheme} from '../contexts/ThemeContext';
+import {soundFile} from '../utils/sounds';
+import {APP_VERSION} from '../version';
 import type {MuteFeedbackMode} from '../hooks/useMute';
 
 const {BLEButtonManager} = NativeModules;
@@ -60,7 +62,7 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
     setFeedbackMode(mode);
     AsyncStorage.setItem(FEEDBACK_KEY, mode);
     // Preview sound
-    const soundName = mode === 'voice' ? 'voice_unmute.mp3' : 'beep_double.mp3';
+    const soundName = soundFile(mode === 'voice' ? 'voice_unmute' : 'beep_double');
     const preview = new Sound(soundName, Sound.MAIN_BUNDLE, (err) => {
       if (!err) preview.play(() => preview.release());
     });
@@ -69,7 +71,7 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
   // --- BLE ---
   const [scanning, setScanning] = useState(false);
   const [devices, setDevices] = useState<BLEDevice[]>([]);
-  const [connectedDevice, setConnectedDevice] = useState<string | null>(null);
+  const [, setConnectedDevice] = useState<string | null>(null);
   const [connectedName, setConnectedName] = useState<string | null>(null);
   const [savedUUID, setSavedUUID] = useState<string | null>(null);
   const [showScan, setShowScan] = useState(false);
@@ -302,7 +304,7 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
         <View style={[styles.card, {backgroundColor: colors.bgCard, borderColor: colors.cardBorder}]}>
           <View style={styles.aboutRow}>
             <Text style={[styles.aboutLabel, {color: colors.textSecondary}]}>Version</Text>
-            <Text style={[styles.aboutValue, {color: colors.text}]}>1.6</Text>
+            <Text style={[styles.aboutValue, {color: colors.text}]}>{APP_VERSION}</Text>
           </View>
         </View>
 
