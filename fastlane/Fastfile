@@ -79,12 +79,29 @@ platform :ios do
       )
     )
 
+    # The project ships with automatic signing and an "iPhone Developer" identity,
+    # which CI cannot use: xcodebuild disables automatic signing, then looks for a
+    # development profile and fails. Pin the target to the profile match just
+    # placed in the shared store.
+    profile_name = ENV.fetch("sigh_#{APP_ID}_appstore_profile-name", "match AppStore #{APP_ID}")
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "ios/#{APP_NAME}.xcodeproj",
+      team_id: ENV.fetch("APPLE_TEAM_ID"),
+      code_sign_identity: "Apple Distribution",
+      profile_name: profile_name,
+      bundle_identifier: APP_ID,
+      targets: [APP_NAME]
+    )
+
     build_app(
       workspace: "ios/#{APP_NAME}.xcworkspace",
       scheme: APP_NAME,
       export_method: "app-store",
+      export_team_id: ENV.fetch("APPLE_TEAM_ID"),
       export_options: {
-        provisioningProfiles: {APP_ID => "match AppStore #{APP_ID}"}
+        provisioningProfiles: {APP_ID => profile_name}
       }
     )
 
