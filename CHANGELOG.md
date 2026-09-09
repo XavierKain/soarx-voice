@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.2
+- Pair several Bluetooth buttons at once, one per wing. All remembered buttons
+  stay paired, and the app connects to whichever one is powered on when you fly —
+  no more forgetting a button to add another
+- Settings lists every paired button, shows which one is connected, and lets you
+  forget them individually
+- If a button goes out of range, the app looks for the other paired ones instead
+  of retrying the same one forever
+
 ## v2.1
 - Bluetooth scan now says why it found nothing instead of failing silently: a
   refused permission, a disabled radio or an unsupported device are each named,

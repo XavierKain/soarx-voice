@@ -46,10 +46,17 @@ export function useBluetoothHID(onToggle: () => void) {
     };
   }, []); // empty deps — subscribe once
 
-  // Auto-reconnect to saved BLE device on mount
+  // Connect to whichever paired button the pilot brought today. Several can be
+  // paired — one per wing — and only the one that is powered on will answer.
   useEffect(() => {
     if (!BLEButtonManager) return;
-    BLEButtonManager.getSavedDeviceUUID().then((uuid: string | null) => {
+    if (BLEButtonManager.connectToAnySaved) {
+      appLog('BLE', 'Looking for any paired button');
+      BLEButtonManager.connectToAnySaved();
+      return;
+    }
+    // Older native module: single saved button
+    BLEButtonManager.getSavedDeviceUUID?.().then((uuid: string | null) => {
       if (uuid) {
         appLog('BLE', `Auto-reconnecting to ${uuid.substring(0, 8)}...`);
         BLEButtonManager.connectToDevice(uuid);

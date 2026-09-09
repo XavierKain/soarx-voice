@@ -10,7 +10,9 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
   private var discoveredPeripherals: [UUID: CBPeripheral] = [:]
   private var hasListeners = false
   private var lastToggleTime: TimeInterval = 0
-  private let savedDeviceKey = "BLEButtonDeviceUUID"
+  private let savedDeviceKey = "BLEButtonDeviceUUID"      // legacy single value
+  private let savedDevicesKey = "BLEButtonDevices"         // [[uuid, name]]
+  private var lookingForAnySaved = false
 
   // Known standard services to IGNORE (not button presses)
   private let standardServiceUUIDs: Set<String> = [
@@ -58,6 +60,40 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
   }
 
   @objc override static func requiresMainQueueSetup() -> Bool { return true }
+
+  // MARK: - Saved buttons
+  //
+  // A pilot carries one button per wing, so several are remembered and whichever
+  // is powered on at the time is the one we connect to.
+
+  private func savedDevices() -> [[String: String]] {
+    if let list = UserDefaults.standard.array(forKey: savedDevicesKey) as? [[String: String]] {
+      return list
+    }
+    // Migrate the single button remembered by earlier versions.
+    if let legacy = UserDefaults.standard.string(forKey: savedDeviceKey) {
+      let migrated = [["uuid": legacy, "name": "Saved button"]]
+      UserDefaults.standard.set(migrated, forKey: savedDevicesKey)
+      return migrated
+    }
+    return []
+  }
+
+  private func isSaved(_ uuid: String) -> Bool {
+    return savedDevices().contains { $0["uuid"] == uuid }
+  }
+
+  private func saveDevice(_ uuid: String, name: String) {
+    var list = savedDevices()
+    if let idx = list.firstIndex(where: { $0["uuid"] == uuid }) {
+      list[idx]["name"] = name
+    } else {
+      list.append(["uuid": uuid, "name": name])
+    }
+    UserDefaults.standard.set(list, forKey: savedDevicesKey)
+    UserDefaults.standard.set(uuid, forKey: savedDeviceKey) // keep legacy key in step
+    NSLog("[BLE] Saved buttons: \(list.count)")
+  }
 
   // MARK: - JS Methods
 
@@ -145,7 +181,53 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
     if let peripheral = connectedPeripheral {
       centralManager?.cancelPeripheralConnection(peripheral)
     }
-    UserDefaults.standard.removeObject(forKey: savedDeviceKey)
+  }
+
+  @objc func getSavedDevices(_ resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) {
+    let connected = connectedPeripheral?.identifier.uuidString
+    resolve(savedDevices().map { d -> [String: Any] in
+      ["uuid": d["uuid"] ?? "", "name": d["name"] ?? "", "connected": d["uuid"] == connected]
+    })
+  }
+
+  @objc func forgetDevice(_ uuid: String) {
+    var list = savedDevices().filter { $0["uuid"] != uuid }
+    UserDefaults.standard.set(list, forKey: savedDevicesKey)
+    if UserDefaults.standard.string(forKey: savedDeviceKey) == uuid {
+      UserDefaults.standard.removeObject(forKey: savedDeviceKey)
+    }
+    if connectedPeripheral?.identifier.uuidString == uuid, let p = connectedPeripheral {
+      userInitiatedDisconnect = true
+      centralManager?.cancelPeripheralConnection(p)
+    }
+    NSLog("[BLE] Forgot \(uuid.prefix(8)) — \(list.count) button(s) left")
+    list = []
+  }
+
+  /// Scan and connect to whichever remembered button is powered on right now.
+  @objc func connectToAnySaved() {
+    let saved = savedDevices()
+    guard !saved.isEmpty else { return }
+    guard let cm = centralManager, unavailableReason(cm.state) == nil else {
+      scanPending = true
+      return
+    }
+    if connectedPeripheral != nil { return }
+
+    // Try the system cache first — instant when the button is already awake.
+    for d in saved {
+      guard let uuidStr = d["uuid"], let id = UUID(uuidString: uuidStr) else { continue }
+      if let p = cm.retrievePeripherals(withIdentifiers: [id]).first {
+        discoveredPeripherals[id] = p
+        p.delegate = self
+        cm.connect(p, options: nil)
+      }
+    }
+
+    // And scan, so a button that wakes up later is picked up too.
+    lookingForAnySaved = true
+    cm.scanForPeripherals(withServices: nil, options: nil)
+    NSLog("[BLE] Looking for any of \(saved.count) saved button(s)")
   }
 
   @objc func getSavedDeviceUUID(_ resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) {
@@ -158,7 +240,8 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
 
   /// Switch to scan-based mode: disconnect and monitor advertisements
   @objc func enableScanMode() {
-    guard let saved = UserDefaults.standard.string(forKey: savedDeviceKey) else { return }
+    guard let saved = connectedPeripheral?.identifier.uuidString
+            ?? savedDevices().first?["uuid"] else { return }
     scanModeDeviceUUID = saved
     scanModeActive = true
     lastSeenAdvertData = nil
@@ -183,9 +266,7 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
     NSLog("[BLE] SCAN MODE disabled")
 
     // Reconnect
-    if let saved = UserDefaults.standard.string(forKey: savedDeviceKey) {
-      connectToDevice(saved)
-    }
+    connectToAnySaved()
   }
 
   // MARK: - CBCentralManagerDelegate
@@ -201,9 +282,7 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
       NSLog("[BLE] Radio ready — running the queued scan")
       startScan()
     }
-    if let savedUUID = UserDefaults.standard.string(forKey: savedDeviceKey) {
-      connectToDevice(savedUUID)
-    }
+    connectToAnySaved()
   }
 
   func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
@@ -247,13 +326,14 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
       return
     }
 
-    // A saved button we were told to reconnect to has reappeared.
-    if !scanModeActive,
-       let saved = UserDefaults.standard.string(forKey: savedDeviceKey),
-       saved == uuid, connectedPeripheral == nil {
-      NSLog("[BLE] Saved button reappeared — reconnecting")
+    // Any remembered button that appears is the one the pilot is carrying today.
+    if !scanModeActive, isSaved(uuid), connectedPeripheral == nil {
+      NSLog("[BLE] Saved button in range — connecting to \(peripheral.name ?? uuid)")
       discoveredPeripherals[peripheral.identifier] = peripheral
-      centralManager?.stopScan()
+      if lookingForAnySaved {
+        lookingForAnySaved = false
+        centralManager?.stopScan()
+      }
       peripheral.delegate = self
       centralManager?.connect(peripheral, options: nil)
       return
@@ -287,7 +367,8 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
     stopScan()
 
     let uuid = peripheral.identifier.uuidString
-    UserDefaults.standard.set(uuid, forKey: savedDeviceKey)
+    saveDevice(uuid, name: peripheral.name ?? "Saved button")
+    lookingForAnySaved = false
     if hasListeners {
       sendEvent(withName: "onDeviceConnected", body: ["uuid": uuid, "name": peripheral.name ?? ""])
     }
@@ -304,11 +385,12 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
 
   /// Retry a reconnection with backoff, then fall back to scanning.
   private func scheduleReconnect(_ uuid: String) {
-    guard UserDefaults.standard.string(forKey: savedDeviceKey) == uuid else { return }
+    guard isSaved(uuid) else { return }
     guard reconnectAttempts < maxReconnectAttempts else {
-      NSLog("[BLE] Giving up after \(reconnectAttempts) attempts — scanning instead")
+      // This button may be off — the pilot may have switched wing. Look for any.
+      NSLog("[BLE] Giving up on \(uuid.prefix(8)) after \(reconnectAttempts) tries — looking for any saved button")
       reconnectAttempts = 0
-      centralManager?.scanForPeripherals(withServices: nil, options: nil)
+      connectToAnySaved()
       return
     }
     reconnectAttempts += 1
@@ -349,18 +431,18 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
     connectedPeripheral = nil
     buttonCharacteristics.removeAll()
 
-    // Auto-reconnect to saved device, with retries if it does not take
-    if let savedUUID = UserDefaults.standard.string(forKey: savedDeviceKey), savedUUID == uuid {
+    // Auto-reconnect to the same button, with retries if it does not take
+    if isSaved(uuid) && !userInitiatedDisconnect {
       reconnectAttempts = 0
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-        self?.connectToDevice(savedUUID)
+        self?.connectToDevice(uuid)
       }
       // If the reconnection never lands, didFailToConnect may not fire either;
       // check back and restart the retry ladder.
       DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
         guard let self = self, self.connectedPeripheral == nil else { return }
         NSLog("[BLE] Reconnect did not land after 3s — retrying")
-        self.scheduleReconnect(savedUUID)
+        self.scheduleReconnect(uuid)
       }
     }
   }

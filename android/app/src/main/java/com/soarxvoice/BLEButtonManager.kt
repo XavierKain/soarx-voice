@@ -20,7 +20,8 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
 
     companion object {
         private const val TAG = "BLE"
-        private const val PREFS_KEY = "BLEButtonDeviceAddress"
+        private const val PREFS_KEY = "BLEButtonDeviceAddress"   // legacy single value
+        private const val PREFS_LIST_KEY = "BLEButtonDevices"     // "addr|name" entries
         // Standard services to ignore
         private val STANDARD_SERVICES = setOf(
             "00001800-0000-1000-8000-00805f9b34fb", // Generic Access
@@ -53,6 +54,39 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
     }
 
     private fun getPrefs() = reactContext.getSharedPreferences("BLEButton", Context.MODE_PRIVATE)
+
+    // A pilot carries one button per wing, so several are remembered and whichever
+    // is powered on at the time is the one we connect to.
+
+    private fun savedDevices(): MutableList<Pair<String, String>> {
+        val stored = getPrefs().getStringSet(PREFS_LIST_KEY, null)
+        if (stored != null) {
+            return stored.mapNotNull {
+                val parts = it.split("|", limit = 2)
+                if (parts.size == 2) parts[0] to parts[1] else null
+            }.toMutableList()
+        }
+        // Migrate the single button remembered by earlier versions.
+        val legacy = getPrefs().getString(PREFS_KEY, null)
+        return if (legacy != null) mutableListOf(legacy to "Saved button") else mutableListOf()
+    }
+
+    private fun persist(list: List<Pair<String, String>>) {
+        getPrefs().edit()
+            .putStringSet(PREFS_LIST_KEY, list.map { "${it.first}|${it.second}" }.toSet())
+            .apply()
+    }
+
+    private fun isSaved(address: String) = savedDevices().any { it.first == address }
+
+    private fun saveDevice(address: String, name: String) {
+        val list = savedDevices()
+        val idx = list.indexOfFirst { it.first == address }
+        if (idx >= 0) list[idx] = address to name else list.add(address to name)
+        persist(list)
+        getPrefs().edit().putString(PREFS_KEY, address).apply()
+        Log.i(TAG, "Saved buttons: ${list.size}")
+    }
 
     private fun hasPermissions(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -152,9 +186,47 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
         connectedGatt?.disconnect()
         connectedGatt?.close()
         connectedGatt = null
-        getPrefs().edit().remove(PREFS_KEY).apply()
-        savedDeviceAddress = null
-        Log.i(TAG, "Disconnected and forgot device")
+        Log.i(TAG, "Disconnected")
+    }
+
+    @ReactMethod
+    fun getSavedDevices(promise: Promise) {
+        val connected = connectedGatt?.device?.address
+        val arr = Arguments.createArray()
+        savedDevices().forEach { (addr, name) ->
+            arr.pushMap(Arguments.createMap().apply {
+                putString("uuid", addr)
+                putString("name", name)
+                putBoolean("connected", addr == connected)
+            })
+        }
+        promise.resolve(arr)
+    }
+
+    @ReactMethod
+    fun forgetDevice(address: String) {
+        val list = savedDevices().filter { it.first != address }
+        persist(list)
+        if (getPrefs().getString(PREFS_KEY, null) == address) {
+            getPrefs().edit().remove(PREFS_KEY).apply()
+        }
+        if (connectedGatt?.device?.address == address) {
+            connectedGatt?.disconnect(); connectedGatt?.close(); connectedGatt = null
+        }
+        savedDeviceAddress = list.firstOrNull()?.first
+        Log.i(TAG, "Forgot $address — ${list.size} button(s) left")
+    }
+
+    /** Connect to whichever remembered button is powered on right now. */
+    @ReactMethod
+    fun connectToAnySaved() {
+        val saved = savedDevices()
+        if (saved.isEmpty() || connectedGatt != null) return
+        if (unavailableReason() != null) return
+        // Scanning finds whichever button the pilot actually brought today.
+        bluetoothAdapter?.bluetoothLeScanner?.startScan(scanCallback)
+        Log.i(TAG, "Looking for any of ${saved.size} saved button(s)")
+        handler.postDelayed({ stopScan() }, 15000)
     }
 
     @ReactMethod
@@ -168,9 +240,7 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
         Log.i(TAG, "JS listeners attached")
 
         // Auto-reconnect when listeners attach
-        if (savedDeviceAddress != null && connectedGatt == null) {
-            connectToDevice(savedDeviceAddress!!)
-        }
+        connectToAnySaved()
     }
 
     @ReactMethod
@@ -198,6 +268,13 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
             val address = device.address
             if (discoveredDevices.containsKey(address)) return
             discoveredDevices[address] = device
+
+            if (isSaved(address) && connectedGatt == null) {
+                Log.i(TAG, "Saved button in range — connecting to $name")
+                stopScan()
+                connectToDevice(address)
+                return
+            }
 
             Log.i(TAG, "Found: $name ($address) RSSI=${result.rssi} itag=$isITag")
             emit("onDeviceFound", Arguments.createMap().apply {
@@ -231,7 +308,8 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
                     // Save device
                     val address = gatt.device.address
                     savedDeviceAddress = address
-                    getPrefs().edit().putString(PREFS_KEY, address).apply()
+                    saveDevice(address, name)
+                    stopScan()
 
                     emit("onDeviceConnected", Arguments.createMap().apply {
                         putString("uuid", address)
@@ -250,12 +328,20 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
                     connectedGatt = null
                     buttonCharacteristics.clear()
 
-                    // Auto-reconnect
-                    if (savedDeviceAddress != null) {
+                    // Auto-reconnect to the same button; if it stays away the
+                    // pilot may have switched wing, so look for any saved one.
+                    val addr = gatt.device.address
+                    if (isSaved(addr)) {
                         handler.postDelayed({
-                            Log.i(TAG, "Auto-reconnecting...")
-                            connectToDevice(savedDeviceAddress!!)
-                        }, 1000)
+                            Log.i(TAG, "Auto-reconnecting to $addr")
+                            connectToDevice(addr)
+                        }, 800)
+                        handler.postDelayed({
+                            if (connectedGatt == null) {
+                                Log.i(TAG, "Still not connected — looking for any saved button")
+                                connectToAnySaved()
+                            }
+                        }, 5000)
                     }
                 }
             }

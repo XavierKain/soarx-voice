@@ -24,6 +24,12 @@ import type {MuteFeedbackMode} from '../hooks/useMute';
 const {BLEButtonManager} = NativeModules;
 const FEEDBACK_KEY = '@soarx_mute_feedback';
 
+interface SavedButton {
+  uuid: string;
+  name: string;
+  connected: boolean;
+}
+
 interface BLEDevice {
   name: string;
   uuid: string;
@@ -84,17 +90,17 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
   const [scanning, setScanning] = useState(false);
   const [devices, setDevices] = useState<BLEDevice[]>([]);
   const [, setConnectedDevice] = useState<string | null>(null);
-  const [connectedName, setConnectedName] = useState<string | null>(null);
-  const [savedUUID, setSavedUUID] = useState<string | null>(null);
+  const [, setConnectedName] = useState<string | null>(null);
+  const [savedDevices, setSavedDevices] = useState<SavedButton[]>([]);
   const [showScan, setShowScan] = useState(false);
   const [bleProblem, setBleProblem] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!BLEButtonManager) return;
-    BLEButtonManager.getSavedDeviceUUID().then((uuid: string | null) => {
-      setSavedUUID(uuid);
-    });
+  const refreshSaved = useCallback(() => {
+    if (!BLEButtonManager?.getSavedDevices) return;
+    BLEButtonManager.getSavedDevices().then(setSavedDevices).catch(() => {});
   }, []);
+
+  useEffect(refreshSaved, [refreshSaved]);
 
   useEffect(() => {
     if (!BLEButtonManager) return;
@@ -117,15 +123,16 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
     const connSub = emitter.addListener('onDeviceConnected', (data: {uuid: string; name: string}) => {
       setConnectedDevice(data.uuid);
       setConnectedName(data.name);
-      setSavedUUID(data.uuid);
       setScanning(false);
       setShowScan(false);
+      refreshSaved();
       if (BLEButtonManager.stopScan) BLEButtonManager.stopScan();
     });
 
     const discSub = emitter.addListener('onDeviceDisconnected', () => {
       setConnectedDevice(null);
       setConnectedName(null);
+      refreshSaved();
     });
 
     return () => {
@@ -134,7 +141,7 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
       connSub.remove();
       discSub.remove();
     };
-  }, []);
+  }, [refreshSaved]);
 
   const startScan = useCallback(() => {
     if (!BLEButtonManager) return;
@@ -153,13 +160,11 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
     BLEButtonManager.connectToDevice(uuid);
   }, []);
 
-  const disconnectDevice = useCallback(() => {
+  const forgetDevice = useCallback((uuid: string) => {
     if (!BLEButtonManager) return;
-    BLEButtonManager.disconnectDevice();
-    setConnectedDevice(null);
-    setConnectedName(null);
-    setSavedUUID(null);
-  }, []);
+    BLEButtonManager.forgetDevice(uuid);
+    setTimeout(refreshSaved, 200);
+  }, [refreshSaved]);
 
   return (
     <View style={[styles.container, {backgroundColor: colors.bg}]}>
@@ -241,25 +246,47 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
             Connect a BLE button to toggle mute during flight — works with screen locked
           </Text>
 
-          {savedUUID && !showScan ? (
-            <View style={[styles.connectedBox, {backgroundColor: colors.greenLight, borderColor: colors.green + '66'}]}>
-              <Text style={[styles.connectedLabel, {color: colors.textMuted}]}>Connected button</Text>
-              <Text style={[styles.connectedName, {color: colors.green}]}>{connectedName || 'Saved device'}</Text>
-              <Text style={[styles.connectedUUID, {color: colors.textMuted}]}>{savedUUID.substring(0, 8)}...</Text>
-              <View style={styles.connectedButtons}>
-                <TouchableOpacity
-                  style={[styles.changeButton, {backgroundColor: colors.cardBorder}]}
-                  onPress={() => setShowScan(true)}
-                  activeOpacity={0.7}>
-                  <Text style={[styles.changeButtonText, {color: colors.primary}]}>Change</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.forgetButton, {backgroundColor: colors.redLight}]}
-                  onPress={disconnectDevice}
-                  activeOpacity={0.7}>
-                  <Text style={[styles.forgetButtonText, {color: colors.red}]}>Forget</Text>
-                </TouchableOpacity>
-              </View>
+          {savedDevices.length > 0 && !showScan ? (
+            <View>
+              <Text style={[styles.connectedLabel, {color: colors.textMuted, marginBottom: spacing.sm}]}>
+                {savedDevices.length === 1
+                  ? 'Paired button'
+                  : `${savedDevices.length} paired buttons — whichever is on connects automatically`}
+              </Text>
+
+              {savedDevices.map(btn => (
+                <View
+                  key={btn.uuid}
+                  style={[
+                    styles.connectedBox,
+                    {
+                      backgroundColor: btn.connected ? colors.greenLight : colors.bg,
+                      borderColor: btn.connected ? colors.green + '66' : colors.cardBorder,
+                    },
+                  ]}>
+                  <Text style={[styles.connectedName, {color: btn.connected ? colors.green : colors.text}]}>
+                    {btn.name || 'Saved button'}
+                  </Text>
+                  <Text style={[styles.connectedUUID, {color: colors.textMuted}]}>
+                    {btn.connected ? 'Connected — in use now' : 'Not in range'}
+                  </Text>
+                  <View style={styles.connectedButtons}>
+                    <TouchableOpacity
+                      style={[styles.forgetButton, {backgroundColor: colors.redLight}]}
+                      onPress={() => forgetDevice(btn.uuid)}
+                      activeOpacity={0.7}>
+                      <Text style={[styles.forgetButtonText, {color: colors.red}]}>Forget</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+
+              <TouchableOpacity
+                style={[styles.scanButton, {backgroundColor: colors.primary, marginTop: spacing.sm}]}
+                onPress={() => setShowScan(true)}
+                activeOpacity={0.7}>
+                <Text style={[styles.scanButtonText, {color: colors.bg}]}>Add another button</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View>
