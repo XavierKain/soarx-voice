@@ -23,6 +23,7 @@ const SOLO_GRACE = 2 * 60 * 1000;        // 2 min grace after solo warning
 const SILENCE_TIMEOUT = 60 * 60 * 1000;  // 1h no audio → warning
 const SILENCE_GRACE = 5 * 60 * 1000;     // 5 min grace after silence warning
 const CHECK_INTERVAL = 1000;             // check every 1s for accurate countdown
+const JOIN_TIMEOUT = 20000;              // give up on a join after 20s
 
 interface AgoraContextValue {
   connectionState: ConnectionState;
@@ -95,7 +96,6 @@ export function AgoraProvider({children}: {children: ReactNode}) {
   // A join is only "done" once Agora reports CONNECTED. joinChannel() used to be
   // fire-and-forget, so HomeScreen's try/catch could never fire and a failed join
   // left the user staring at an empty channel.
-  const JOIN_TIMEOUT = 20000;
   const joinSettleRef = useRef<{
     resolve: () => void;
     reject: (e: Error) => void;
@@ -392,8 +392,12 @@ export function AgoraProvider({children}: {children: ReactNode}) {
       joinSettleRef.current = {resolve, reject, timer};
     });
 
-    engine.joinChannel('', config.channelName, 0, {});
-    engine.muteLocalAudioStream(false);
+    try {
+      engine.joinChannel('', config.channelName, 0, {});
+      engine.muteLocalAudioStream(false);
+    } catch (e) {
+      settleJoin(e instanceof Error ? e : new Error('Join call failed'));
+    }
 
     try {
       await connected;

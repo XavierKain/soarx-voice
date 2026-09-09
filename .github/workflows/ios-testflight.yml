@@ -55,10 +55,12 @@ jobs:
           BUILD="${{ inputs.build_number }}"
           if [ -z "$BUILD" ]; then BUILD=$(( 11 + GITHUB_RUN_NUMBER )); fi
           echo "number=$BUILD" >> "$GITHUB_OUTPUT"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" ios/SoarXVoice/Info.plist 2>/dev/null || true
           sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = $BUILD;/g" \
             ios/SoarXVoice.xcodeproj/project.pbxproj
-          echo "Building CFBundleVersion $BUILD"
+          VERSION=$(grep -m1 'MARKETING_VERSION' ios/SoarXVoice.xcodeproj/project.pbxproj \
+            | sed 's/.*= *//; s/;.*//')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building v$VERSION ($BUILD)"
 
       - name: Write App Store Connect API key
         env:
@@ -123,7 +125,8 @@ jobs:
           ASC_KEY_PATH: /Users/runner/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
         run: |
           pip3 install --quiet pyjwt cryptography
-          NOTES=$(awk '/^## v/{if(f)exit; if($0 ~ /^## v2\.0/)f=1; next} f' CHANGELOG.md)
+          NOTES=$(awk -v v="## v${{ steps.build.outputs.version }}" '
+            $0 == v {f=1; next} f && /^## v/ {exit} f && NF {print}' CHANGELOG.md)
           python3 scripts/set-testflight-notes.py "${{ steps.build.outputs.number }}" "$NOTES"
 
       - name: Clean up secrets

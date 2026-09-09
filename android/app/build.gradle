@@ -116,7 +116,9 @@ android {
         release {
             def storePath = signingProp('storeFile', 'ANDROID_KEYSTORE_FILE')
             if (storePath != null) {
-                storeFile file(storePath)
+                // Resolved from android/, not android/app/, so the same value
+                // works in keystore.properties and in CI.
+                storeFile rootProject.file(storePath)
                 storePassword signingProp('storePassword', 'ANDROID_KEYSTORE_PASSWORD')
                 keyAlias signingProp('keyAlias', 'ANDROID_KEY_ALIAS')
                 keyPassword signingProp('keyPassword', 'ANDROID_KEY_PASSWORD')
