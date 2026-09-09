@@ -106,6 +106,35 @@ platform :ios do
     end
   end
 
+  desc "Delete App Store provisioning profiles for given bundle IDs"
+  lane :delete_profiles do |options|
+    require "spaceship"
+    require "base64"
+
+    ids = (options[:ids] || "").split(",").map(&:strip).reject(&:empty?)
+    UI.user_error!("Pass ids:com.a,com.b") if ids.empty?
+
+    Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.create(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key: Base64.decode64(ENV.fetch("ASC_KEY_P8_BASE64"))
+    )
+
+    # Profiles are free to regenerate — match recreates them on the next run.
+    # Removing them frees the canonical "match AppStore <id>" names, which Apple
+    # otherwise keeps reserved, forcing match to append a timestamp that no
+    # longer matches PROVISIONING_PROFILE_SPECIFIER in the project.
+    Spaceship::ConnectAPI::Profile.all(includes: "bundleId").each do |profile|
+      bundle = profile.bundle_id&.identifier
+      next unless ids.include?(bundle)
+      next unless profile.profile_type.to_s.include?("APP_STORE")
+      UI.important("Deleting #{profile.profile_type} \"#{profile.name}\" (#{bundle})")
+      profile.delete!
+    end
+
+    UI.success("Done. Re-run the app's release workflow so match recreates them.")
+  end
+
   desc "Add an App Store Connect user to the internal TestFlight group"
   lane :add_internal_tester do |options|
     require "spaceship"

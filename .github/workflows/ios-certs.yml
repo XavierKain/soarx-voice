@@ -11,9 +11,13 @@ on:
         required: true
         default: testflight_status
         type: choice
-        options: [testflight_status, list_certs, add_internal_tester]
+        options: [testflight_status, list_certs, add_internal_tester, delete_profiles]
       who:
         description: "For add_internal_tester: name or email of the account user"
+        required: false
+        type: string
+      ids:
+        description: "For delete_profiles: comma-separated bundle IDs"
         required: false
         type: string
 
@@ -35,6 +39,8 @@ jobs:
         run: |
           if [ -n "${{ inputs.who }}" ]; then
             bundle exec fastlane ${{ inputs.lane }} who:"${{ inputs.who }}"
+          elif [ -n "${{ inputs.ids }}" ]; then
+            bundle exec fastlane ${{ inputs.lane }} ids:"${{ inputs.ids }}"
           else
             bundle exec fastlane ${{ inputs.lane }}
           fi
