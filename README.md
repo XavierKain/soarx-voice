@@ -70,15 +70,29 @@ You can also run either workflow manually from the Actions tab
 | `AGORA_APP_ID` | both | Agora RTC App ID |
 | `ASC_KEY_ID` | iOS | App Store Connect API key ID |
 | `ASC_ISSUER_ID` | iOS | App Store Connect issuer UUID |
-| `ASC_PRIVATE_KEY` | iOS | Full contents of the `AuthKey_*.p8` |
+| `ASC_KEY_P8_BASE64` | iOS | `base64 -w0 AuthKey_XXXX.p8` |
 | `APPLE_TEAM_ID` | iOS | Apple Developer team ID |
+| `MATCH_PASSWORD` | iOS | Passphrase encrypting the match certificates |
 | `ANDROID_KEYSTORE_BASE64` | Android | `base64 -w0 soarxvoice-release.keystore` |
 | `ANDROID_KEYSTORE_PASSWORD` | Android | Keystore password |
 | `ANDROID_KEY_ALIAS` | Android | Key alias (`soarxvoice`) |
 | `ANDROID_KEY_PASSWORD` | Android | Key password |
 
-The App Store Connect key needs the **App Manager** role so `xcodebuild
--allowProvisioningUpdates` can manage certificates and profiles.
+These are the same names and the same values as the other iOS apps in this
+account (LiveXWind, ClaudeX, ParaFlightLog), so the App Store Connect key is
+shared. **GitHub never exposes a secret's value once set** — not through the API,
+not to the account owner — so they cannot be copied between repositories. Either
+set them again here with `gh secret set`, or move this repository into the
+`xavierkain-apps` organization and use organization secrets.
+
+> On the GitHub Free plan, organization secrets are only available to **public**
+> repositories. This repository is public, so organization secrets would apply
+> once it lives in the organization.
+
+Signing uses **fastlane match** (`type: appstore`), with the encrypted
+certificates stored on the `match-certs` branch of this repository — the same
+arrangement as LiveXWind. The App Store Connect key needs the **App Manager**
+role.
 
 ## Signing
 
