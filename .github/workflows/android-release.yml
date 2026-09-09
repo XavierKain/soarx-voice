@@ -64,6 +64,8 @@ jobs:
         with:
           name: soarxvoice-android-release
           retention-days: 30
+          # A path that silently matches nothing is how the APKs went missing once.
+          if-no-files-found: error
           # ABI splits mean there is no single app-release.apk: the build
           # produces app-<abi>-release.apk plus app-universal-release.apk.
           path: |
