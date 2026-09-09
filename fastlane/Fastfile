@@ -23,6 +23,30 @@ APP_ID = "com.xavier.soarxvoice"
 APP_NAME = "SoarXVoice"
 
 platform :ios do
+  desc "List the distribution certificates on the account"
+  lane :list_certs do
+    require "spaceship"
+    require "base64"
+
+    Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.create(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key: Base64.decode64(ENV.fetch("ASC_KEY_P8_BASE64"))
+    )
+
+    certs = Spaceship::ConnectAPI::Certificate.all
+    UI.important("#{certs.count} certificate(s) on the account:")
+    certs.sort_by { |c| c.certificate_type.to_s }.each do |c|
+      UI.message(
+        "  [#{c.certificate_type}] #{c.display_name} " \
+        "| id=#{c.id} | serial=#{c.serial_number} | expires #{c.expiration_date}"
+      )
+    end
+
+    dist = certs.select { |c| c.certificate_type.to_s.include?("DISTRIBUTION") }
+    UI.important("#{dist.count} distribution certificate(s) — this is what Apple caps.")
+  end
+
   desc "Build and upload to TestFlight"
   lane :beta do
     setup_ci
