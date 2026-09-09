@@ -13,9 +13,10 @@
 #   MATCH_GIT_TOKEN     — PAT with write access to that repository (the default
 #                         GITHUB_TOKEN is scoped to this repo and cannot push there)
 #
-# Apple caps the number of distribution certificates, so every app in the account
-# shares one. match reads it from the shared storage and only creates the missing
-# provisioning profile for this bundle ID.
+# Apple caps distribution certificates at 3 per team, so every app in the account
+# shares ONE identity, held in xavierkain-apps/apple-certs. match reads it from
+# there and only creates the missing provisioning profile for this bundle ID.
+# Creating a per-app certificate is what exhausted the cap previously.
 
 default_platform(:ios)
 

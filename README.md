@@ -72,7 +72,9 @@ You can also run either workflow manually from the Actions tab
 | `ASC_ISSUER_ID` | iOS | App Store Connect issuer UUID |
 | `ASC_KEY_P8_BASE64` | iOS | `base64 -w0 AuthKey_XXXX.p8` |
 | `APPLE_TEAM_ID` | iOS | Apple Developer team ID |
-| `MATCH_PASSWORD` | iOS | Passphrase encrypting the match certificates |
+| `MATCH_PASSWORD` | iOS | Passphrase encrypting the shared match storage |
+| `MATCH_GIT_URL` | iOS | `https://github.com/xavierkain-apps/apple-certs.git` |
+| `MATCH_GIT_TOKEN` | iOS | PAT with write access to that repository |
 | `ANDROID_KEYSTORE_BASE64` | Android | `base64 -w0 soarxvoice-release.keystore` |
 | `ANDROID_KEYSTORE_PASSWORD` | Android | Keystore password |
 | `ANDROID_KEY_ALIAS` | Android | Key alias (`soarxvoice`) |
@@ -102,10 +104,16 @@ gh secret set MATCH_PASSWORD -R xavierkain-apps/soarx-voice
 Promoting both to organization secrets instead would let every iOS app in the
 account share them.
 
-Signing uses **fastlane match** (`type: appstore`), with the encrypted
-certificates stored on the `match-certs` branch of this repository — the same
-arrangement as LiveXWind. The App Store Connect key needs the **App Manager**
-role.
+Signing uses **fastlane match** (`type: appstore`). The encrypted certificates
+live in **`xavierkain-apps/apple-certs`**, shared by every iOS app in the
+account: Apple caps distribution certificates at 3 per team, and giving each app
+its own is what exhausted that cap. match reads the shared identity from there
+and creates only the provisioning profile this bundle ID needs.
+
+`MATCH_GIT_TOKEN` must be a PAT with `Contents: read and write` on
+`xavierkain-apps/apple-certs` — a workflow's built-in `GITHUB_TOKEN` is scoped to
+its own repository and cannot reach it. The App Store Connect key needs the
+**App Manager** role.
 
 ## Signing
 
