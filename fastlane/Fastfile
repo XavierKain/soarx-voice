@@ -86,6 +86,13 @@ platform :ios do
       end
     end
 
+    UI.important("--- Recent builds ---")
+    builds = asc_get("v1/builds?filter[app]=#{app.id}&limit=5&sort=-uploadedDate")["data"] || []
+    builds.each do |b|
+      a = b["attributes"]
+      UI.message("  build #{a['version']} | state=#{a['processingState']} | expired=#{a['expired']} | uploaded #{a['uploadedDate']}")
+    end
+
     UI.important("--- All beta testers on the app ---")
     (asc_get("v1/apps/#{app.id}/betaTesters")["data"] || []).each do |t|
       a = t["attributes"]
@@ -130,7 +137,19 @@ platform :ios do
     UI.user_error!("No internal beta group on #{APP_ID}") if group.nil?
     UI.important("Internal group: #{group.name} (#{group.id})")
 
-    already = (group.get_beta_testers rescue []).any? { |t| t.email.to_s.casecmp?(email.to_s) }
+    require "net/http"
+    require "json"
+
+    def asc_get(path)
+      uri = URI("https://api.appstoreconnect.apple.com/#{path}")
+      req = Net::HTTP::Get.new(uri)
+      req["Authorization"] = "Bearer #{Spaceship::ConnectAPI.token.text}"
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |h| h.request(req) }
+      JSON.parse(res.body)
+    end
+
+    current = asc_get("v1/betaGroups/#{group.id}/betaTesters")["data"] || []
+    already = current.any? { |t| t["attributes"]["email"].to_s.casecmp?(email.to_s) }
     if already
       UI.success("#{email} is already in #{group.name} — nothing to do.")
     else
@@ -170,8 +189,9 @@ platform :ios do
     end
 
     UI.important("--- #{group.name} now contains ---")
-    (group.get_beta_testers rescue []).each do |t|
-      UI.message("  #{t.email} (#{t.first_name} #{t.last_name}) state=#{t.state}")
+    (asc_get("v1/betaGroups/#{group.id}/betaTesters")["data"] || []).each do |t|
+      a = t["attributes"]
+      UI.message("  #{a['email']} (#{a['firstName']} #{a['lastName']}) state=#{a['state']}")
     end
   end
 
