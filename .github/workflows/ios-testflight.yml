@@ -54,6 +54,24 @@ jobs:
           fi
           echo "All required secrets present."
 
+      - name: Verify the certificate store is reachable
+        env:
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
+        run: |
+          # A personal access token expires. Without this check the build spends
+          # ten minutes on pods and Xcode before failing inside match with an
+          # opaque git error.
+          host=$(echo "$MATCH_GIT_URL" | sed 's#https://##')
+          if ! git ls-remote "https://x-access-token:${MATCH_GIT_TOKEN}@${host}" >/dev/null 2>&1; then
+            echo "::error::Cannot reach $MATCH_GIT_URL — MATCH_GIT_TOKEN is likely expired or revoked."
+            echo "Regenerate it at https://github.com/settings/tokens?type=beta"
+            echo "  Resource owner: xavierkain-apps | Repository: apple-certs | Contents: read and write"
+            echo "Then: gh secret set MATCH_GIT_TOKEN -R xavierkain-apps/soarx-voice"
+            exit 1
+          fi
+          echo "Certificate store reachable."
+
       - name: Install JS dependencies
         run: npm ci
 
