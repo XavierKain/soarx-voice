@@ -74,7 +74,58 @@ platform :ios do
 
     UI.important("--- App Store Connect users ---")
     Spaceship::ConnectAPI::User.all.each do |u|
-      UI.message("  #{u.email} | #{u.first_name} #{u.last_name} | roles=#{u.roles.join(',')}")
+      addr = (u.respond_to?(:email) && u.email) || (u.respond_to?(:username) && u.username)
+      UI.message("  #{addr} | #{u.first_name} #{u.last_name} | roles=#{u.roles.join(',')}")
+    end
+  end
+
+  desc "Add an App Store Connect user to the internal TestFlight group"
+  lane :add_internal_tester do |options|
+    require "spaceship"
+    require "base64"
+
+    query = options[:who] or UI.user_error!("Pass who:<name or email>")
+
+    Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.create(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key: Base64.decode64(ENV.fetch("ASC_KEY_P8_BASE64"))
+    )
+
+    # Internal testers must already be users on the account, so resolve the
+    # person there rather than trusting a hand-typed address.
+    users = Spaceship::ConnectAPI::User.all
+    user = users.find do |u|
+      addr = (u.respond_to?(:email) && u.email) || (u.respond_to?(:username) && u.username) || ""
+      full = "#{u.first_name} #{u.last_name}"
+      [addr, full].any? { |f| f.to_s.downcase.include?(query.to_s.downcase) }
+    end
+    UI.user_error!("No account user matches #{query.inspect}") if user.nil?
+
+    email = (user.respond_to?(:email) && user.email) || user.username
+    UI.important("Matched #{user.first_name} #{user.last_name} <#{email}> roles=#{user.roles.join(',')}")
+
+    app = Spaceship::ConnectAPI::App.find(APP_ID)
+    group = app.get_beta_groups.find(&:is_internal_group)
+    UI.user_error!("No internal beta group on #{APP_ID}") if group.nil?
+    UI.important("Internal group: #{group.name} (#{group.id})")
+
+    already = (group.get_beta_testers rescue []).any? { |t| t.email.to_s.casecmp?(email.to_s) }
+    if already
+      UI.success("#{email} is already in #{group.name} — nothing to do.")
+    else
+      Spaceship::ConnectAPI::BetaTester.create(
+        beta_group_id: group.id,
+        email: email,
+        first_name: user.first_name,
+        last_name: user.last_name
+      )
+      UI.success("Added #{email} to #{group.name}.")
+    end
+
+    UI.important("--- #{group.name} now contains ---")
+    (group.get_beta_testers rescue []).each do |t|
+      UI.message("  #{t.email} (#{t.first_name} #{t.last_name}) state=#{t.state}")
     end
   end
 

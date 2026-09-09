@@ -11,7 +11,11 @@ on:
         required: true
         default: testflight_status
         type: choice
-        options: [testflight_status, list_certs]
+        options: [testflight_status, list_certs, add_internal_tester]
+      who:
+        description: "For add_internal_tester: name or email of the account user"
+        required: false
+        type: string
 
 jobs:
   list:
@@ -28,4 +32,9 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
-        run: bundle exec fastlane ${{ inputs.lane }}
+        run: |
+          if [ -n "${{ inputs.who }}" ]; then
+            bundle exec fastlane ${{ inputs.lane }} who:"${{ inputs.who }}"
+          else
+            bundle exec fastlane ${{ inputs.lane }}
+          fi
