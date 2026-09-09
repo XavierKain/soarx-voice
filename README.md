@@ -78,16 +78,29 @@ You can also run either workflow manually from the Actions tab
 | `ANDROID_KEY_ALIAS` | Android | Key alias (`soarxvoice`) |
 | `ANDROID_KEY_PASSWORD` | Android | Key password |
 
-These are the same names and the same values as the other iOS apps in this
-account (LiveXWind, ClaudeX, ParaFlightLog), so the App Store Connect key is
-shared. **GitHub never exposes a secret's value once set** — not through the API,
-not to the account owner — so they cannot be copied between repositories. Either
-set them again here with `gh secret set`, or move this repository into the
-`xavierkain-apps` organization and use organization secrets.
+The canonical repository is `xavierkain-apps/soarx-voice` (public, so that
+organization secrets apply on the GitHub Free plan).
 
-> On the GitHub Free plan, organization secrets are only available to **public**
-> repositories. This repository is public, so organization secrets would apply
-> once it lives in the organization.
+Current state of the secrets on that repository:
+
+- `APPLE_TEAM_ID` — inherited from the **organization**, already resolving
+- `AGORA_APP_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID` and all four `ANDROID_*` — set
+  at the **repository** level
+- `ASC_KEY_P8_BASE64` and `MATCH_PASSWORD` — **still to be set**
+
+Those last two are the same values already in use on `XavierKain/livexwind`.
+**GitHub never exposes a secret's value once set** — not through the API, not to
+the account owner — so they cannot be copied between repositories. Supply them
+from the original source:
+
+```sh
+gh secret set ASC_KEY_P8_BASE64 -R xavierkain-apps/soarx-voice \
+  --body "$(base64 -w0 ~/.appstoreconnect/AuthKey_73PNP8Z93X.p8)"
+gh secret set MATCH_PASSWORD -R xavierkain-apps/soarx-voice
+```
+
+Promoting both to organization secrets instead would let every iOS app in the
+account share them.
 
 Signing uses **fastlane match** (`type: appstore`), with the encrypted
 certificates stored on the `match-certs` branch of this repository — the same
