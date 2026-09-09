@@ -1,5 +1,9 @@
 // SoarX Voice — Dual Theme Design System
 
+type StatusBarStyle = 'light-content' | 'dark-content';
+
+// No `as const` here: the palette values must widen to `string` so the light and
+// dark palettes stay assignable to the same ThemeColors type.
 const darkColors = {
   primary: '#0EA5E9',
   primaryDark: '#0284C7',
@@ -22,10 +26,10 @@ const darkColors = {
   textMuted: '#64748B',
   textDim: '#475569',
   cardBorder: 'rgba(255,255,255,0.06)',
-  statusBar: 'light-content' as const,
-} as const;
+  statusBar: 'light-content' as StatusBarStyle,
+};
 
-const lightColors = {
+const lightColors: typeof darkColors = {
   primary: '#0EA5E9',
   primaryDark: '#0284C7',
   primaryLight: 'rgba(14, 165, 233, 0.08)',
@@ -47,8 +51,8 @@ const lightColors = {
   textMuted: '#94A3B8',
   textDim: '#CBD5E1',
   cardBorder: 'rgba(0,0,0,0.08)',
-  statusBar: 'dark-content' as const,
-} as const;
+  statusBar: 'dark-content',
+};
 
 export type ThemeColors = typeof darkColors;
 export type ThemeMode = 'dark' | 'light';

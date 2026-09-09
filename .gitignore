@@ -80,3 +80,11 @@ yarn-error.log
 # Superpowers artifacts
 .superpowers/
 ios/android/
+
+# Android release signing (never commit)
+android/keystore.properties
+android/app/*.keystore
+!android/app/debug.keystore
+
+# Generated JS bundle (produced at build time)
+android/app/src/main/assets/index.android.bundle

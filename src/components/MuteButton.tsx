@@ -54,7 +54,6 @@ export function MuteButton({isMuted, onPress}: MuteButtonProps) {
   }, [isMuted, pulseScale, pulseOpacity]);
 
   const stateColor = isMuted ? colors.red : colors.primary;
-  const stateGlow = isMuted ? colors.redGlow : colors.primaryGlow;
 
   return (
     <View style={styles.container}>

@@ -9,7 +9,12 @@ import com.facebook.react.uimanager.ViewManager
 
 class HIDPackage : ReactPackage {
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-        return listOf(HIDModule(reactContext), ForegroundServiceModule(reactContext), BLEButtonManager(reactContext))
+        return listOf(
+            HIDModule(reactContext),
+            ForegroundServiceModule(reactContext),
+            BLEButtonManager(reactContext),
+            TTSModule(reactContext),
+        )
     }
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<View, ReactShadowNode<*>>> {
         return emptyList()

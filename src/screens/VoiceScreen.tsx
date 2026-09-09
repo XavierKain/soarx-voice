@@ -9,6 +9,7 @@ import {MuteButton} from '../components/MuteButton';
 import {PilotList} from '../components/PilotList';
 import {ChannelBadge} from '../components/ChannelBadge';
 import {useTheme} from '../contexts/ThemeContext';
+import {soundFile} from '../utils/sounds';
 import {colors as defaultColors, fonts, spacing, radius} from '../theme';
 
 interface VoiceScreenProps {
@@ -30,7 +31,7 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
       try {
         Vibration.vibrate(Platform.OS === 'ios' ? 500 : 1000);
       } catch {}
-      const warning = new Sound('inactivity_warning.mp3', Sound.MAIN_BUNDLE, (err) => {
+      const warning = new Sound(soundFile('inactivity_warning'), Sound.MAIN_BUNDLE, (err) => {
         if (!err) warning.play(() => warning.release());
       });
     } else if (inactivityWarning === 'solo') {
@@ -73,6 +74,7 @@ export function VoiceScreen({onLeft}: VoiceScreenProps) {
         <View style={styles.headerRight}>
           {connectionState === 'connected' && <ChannelBadge />}
           {connectionState === 'reconnecting' && <Text style={[styles.reconnecting, {color: colors.amber}]}>Reconnecting...</Text>}
+          {connectionState === 'failed' && <Text style={[styles.reconnecting, {color: colors.red}]}>Connection lost</Text>}
         </View>
       </View>
 

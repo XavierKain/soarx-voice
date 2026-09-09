@@ -1,7 +1,10 @@
 import React, {useState} from 'react';
 import {StatusBar, View, LogBox} from 'react-native';
 
-LogBox.ignoreAllLogs();
+// Keep warnings visible in development; only silence them in release builds.
+if (!__DEV__) {
+  LogBox.ignoreAllLogs();
+}
 import {UserProvider} from './src/contexts/UserContext';
 import {AgoraProvider} from './src/contexts/AgoraContext';
 import {ThemeProvider, useTheme} from './src/contexts/ThemeContext';
