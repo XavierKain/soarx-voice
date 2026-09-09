@@ -51,6 +51,10 @@ jobs:
           fi
           echo "All required secrets present."
 
+      - name: Compute build number
+        id: bn
+        run: echo "value=$(( GITHUB_RUN_NUMBER + 11 ))" >> "$GITHUB_OUTPUT"
+
       - name: Install JS dependencies
         run: npm ci
 
@@ -70,7 +74,7 @@ jobs:
           MATCH_GIT_URL: https://github.com/${{ github.repository }}.git
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Build 11 is v2.0 locally; CI uploads start above it.
-          BUILD_NUMBER: ${{ github.run_number + 11 }}
+          BUILD_NUMBER: ${{ steps.bn.outputs.value }}
         run: bundle exec fastlane beta
 
       - name: Clean up
