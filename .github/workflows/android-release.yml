@@ -5,6 +5,10 @@ on:
   push:
     tags: ['v*']
 
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
