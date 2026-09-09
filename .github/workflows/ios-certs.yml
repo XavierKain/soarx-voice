@@ -1,10 +1,17 @@
-name: iOS — List certificates
+name: iOS — Account diagnostics
 
 # Diagnostic helper: shows which distribution certificates exist on the Apple
 # account, so a "maximum number of certificates" failure can be resolved with
 # facts instead of guesses.
 on:
   workflow_dispatch:
+    inputs:
+      lane:
+        description: "Which diagnostic lane to run"
+        required: true
+        default: testflight_status
+        type: choice
+        options: [testflight_status, list_certs]
 
 jobs:
   list:
@@ -16,9 +23,9 @@ jobs:
         with:
           ruby-version: "3.3"
           bundler-cache: true
-      - name: List certificates
+      - name: Run lane
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
-        run: bundle exec fastlane list_certs
+        run: bundle exec fastlane ${{ inputs.lane }}
