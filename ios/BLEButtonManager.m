@@ -12,6 +12,7 @@ RCT_EXTERN_METHOD(getSavedDeviceUUID:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(getSavedDevices:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(forgetDevice:(NSString *)uuid)
+RCT_EXTERN_METHOD(renameDevice:(NSString *)uuid name:(NSString *)name)
 RCT_EXTERN_METHOD(connectToAnySaved)
 RCT_EXTERN_METHOD(getState:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)

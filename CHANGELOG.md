@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.3
+- Rename a paired Bluetooth button, so several identical iTags can be told apart
+  by wing rather than by guessing which one is connected
+- A chosen name survives reconnections instead of reverting to the advertised
+  device name; clearing it hands control back to the device
+
 ## v2.2
 - Pair several Bluetooth buttons at once, one per wing. All remembered buttons
   stay paired, and the app connects to whichever one is powered on when you fly —

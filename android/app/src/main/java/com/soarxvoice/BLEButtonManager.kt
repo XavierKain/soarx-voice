@@ -21,7 +21,7 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
     companion object {
         private const val TAG = "BLE"
         private const val PREFS_KEY = "BLEButtonDeviceAddress"   // legacy single value
-        private const val PREFS_LIST_KEY = "BLEButtonDevices"     // "addr|name" entries
+        private const val PREFS_LIST_KEY = "BLEButtonDevices"     // "addr|name|custom" entries
         // Standard services to ignore
         private val STANDARD_SERVICES = setOf(
             "00001800-0000-1000-8000-00805f9b34fb", // Generic Access
@@ -58,31 +58,44 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
     // A pilot carries one button per wing, so several are remembered and whichever
     // is powered on at the time is the one we connect to.
 
-    private fun savedDevices(): MutableList<Pair<String, String>> {
+    private data class SavedButton(val address: String, val name: String, val custom: Boolean)
+
+    private fun savedDevices(): MutableList<SavedButton> {
         val stored = getPrefs().getStringSet(PREFS_LIST_KEY, null)
         if (stored != null) {
             return stored.mapNotNull {
-                val parts = it.split("|", limit = 2)
-                if (parts.size == 2) parts[0] to parts[1] else null
+                val parts = it.split("|")
+                if (parts.size >= 2) SavedButton(parts[0], parts[1], parts.getOrNull(2) == "1")
+                else null
             }.toMutableList()
         }
         // Migrate the single button remembered by earlier versions.
         val legacy = getPrefs().getString(PREFS_KEY, null)
-        return if (legacy != null) mutableListOf(legacy to "Saved button") else mutableListOf()
+        return if (legacy != null) mutableListOf(SavedButton(legacy, "Saved button", false))
+               else mutableListOf()
     }
 
-    private fun persist(list: List<Pair<String, String>>) {
+    private fun persist(list: List<SavedButton>) {
         getPrefs().edit()
-            .putStringSet(PREFS_LIST_KEY, list.map { "${it.first}|${it.second}" }.toSet())
+            .putStringSet(
+                PREFS_LIST_KEY,
+                list.map { "${it.address}|${it.name}|${if (it.custom) "1" else "0"}" }.toSet()
+            )
             .apply()
     }
 
-    private fun isSaved(address: String) = savedDevices().any { it.first == address }
+    private fun isSaved(address: String) = savedDevices().any { it.address == address }
 
     private fun saveDevice(address: String, name: String) {
         val list = savedDevices()
-        val idx = list.indexOfFirst { it.first == address }
-        if (idx >= 0) list[idx] = address to name else list.add(address to name)
+        val idx = list.indexOfFirst { it.address == address }
+        if (idx >= 0) {
+            // A name the pilot chose must survive reconnections, which would
+            // otherwise overwrite it with the advertised name ("iTag").
+            if (!list[idx].custom) list[idx] = list[idx].copy(name = name)
+        } else {
+            list.add(SavedButton(address, name, false))
+        }
         persist(list)
         getPrefs().edit().putString(PREFS_KEY, address).apply()
         Log.i(TAG, "Saved buttons: ${list.size}")
@@ -193,19 +206,35 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
     fun getSavedDevices(promise: Promise) {
         val connected = connectedGatt?.device?.address
         val arr = Arguments.createArray()
-        savedDevices().forEach { (addr, name) ->
+        savedDevices().forEach { btn ->
             arr.pushMap(Arguments.createMap().apply {
-                putString("uuid", addr)
-                putString("name", name)
-                putBoolean("connected", addr == connected)
+                putString("uuid", btn.address)
+                putString("name", btn.name)
+                putBoolean("connected", btn.address == connected)
             })
         }
         promise.resolve(arr)
     }
 
     @ReactMethod
+    fun renameDevice(address: String, name: String) {
+        val list = savedDevices()
+        val idx = list.indexOfFirst { it.address == address }
+        if (idx < 0) return
+        val trimmed = name.trim()
+        list[idx] = if (trimmed.isEmpty()) {
+            // Clearing the name hands control back to the advertised one.
+            list[idx].copy(name = "Saved button", custom = false)
+        } else {
+            list[idx].copy(name = trimmed, custom = true)
+        }
+        persist(list)
+        Log.i(TAG, "Renamed $address to ${list[idx].name}")
+    }
+
+    @ReactMethod
     fun forgetDevice(address: String) {
-        val list = savedDevices().filter { it.first != address }
+        val list = savedDevices().filter { it.address != address }
         persist(list)
         if (getPrefs().getString(PREFS_KEY, null) == address) {
             getPrefs().edit().remove(PREFS_KEY).apply()
@@ -213,7 +242,7 @@ class BLEButtonManager(private val reactContext: ReactApplicationContext) :
         if (connectedGatt?.device?.address == address) {
             connectedGatt?.disconnect(); connectedGatt?.close(); connectedGatt = null
         }
-        savedDeviceAddress = list.firstOrNull()?.first
+        savedDeviceAddress = list.firstOrNull()?.address
         Log.i(TAG, "Forgot $address — ${list.size} button(s) left")
     }
 

@@ -86,7 +86,11 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
   private func saveDevice(_ uuid: String, name: String) {
     var list = savedDevices()
     if let idx = list.firstIndex(where: { $0["uuid"] == uuid }) {
-      list[idx]["name"] = name
+      // A name the pilot chose must survive reconnections, which would
+      // otherwise overwrite it with the advertised name ("iTag").
+      if list[idx]["custom"] != "1" {
+        list[idx]["name"] = name
+      }
     } else {
       list.append(["uuid": uuid, "name": name])
     }
@@ -188,6 +192,24 @@ class BLEButtonManager: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralD
     resolve(savedDevices().map { d -> [String: Any] in
       ["uuid": d["uuid"] ?? "", "name": d["name"] ?? "", "connected": d["uuid"] == connected]
     })
+  }
+
+  @objc func renameDevice(_ uuid: String, name: String) {
+    var list = savedDevices()
+    guard let idx = list.firstIndex(where: { $0["uuid"] == uuid }) else { return }
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty {
+      // Clearing the name hands control back to the advertised one.
+      list[idx]["custom"] = "0"
+      list[idx]["name"] = connectedPeripheral?.identifier.uuidString == uuid
+        ? (connectedPeripheral?.name ?? "Saved button")
+        : "Saved button"
+    } else {
+      list[idx]["name"] = trimmed
+      list[idx]["custom"] = "1"
+    }
+    UserDefaults.standard.set(list, forKey: savedDevicesKey)
+    NSLog("[BLE] Renamed \(uuid.prefix(8)) to \(list[idx]["name"] ?? "")")
   }
 
   @objc func forgetDevice(_ uuid: String) {

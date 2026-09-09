@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  TextInput,
   Platform,
   NativeModules,
   NativeEventEmitter,
@@ -160,6 +161,17 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
     BLEButtonManager.connectToDevice(uuid);
   }, []);
 
+  const [renamingUUID, setRenamingUUID] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState('');
+
+  const commitRename = useCallback(() => {
+    if (!BLEButtonManager?.renameDevice || !renamingUUID) return;
+    BLEButtonManager.renameDevice(renamingUUID, renameText);
+    setRenamingUUID(null);
+    setRenameText('');
+    setTimeout(refreshSaved, 150);
+  }, [renamingUUID, renameText, refreshSaved]);
+
   const forgetDevice = useCallback((uuid: string) => {
     if (!BLEButtonManager) return;
     BLEButtonManager.forgetDevice(uuid);
@@ -264,20 +276,64 @@ export function SettingsScreen({onDone}: SettingsScreenProps) {
                       borderColor: btn.connected ? colors.green + '66' : colors.cardBorder,
                     },
                   ]}>
-                  <Text style={[styles.connectedName, {color: btn.connected ? colors.green : colors.text}]}>
-                    {btn.name || 'Saved button'}
-                  </Text>
-                  <Text style={[styles.connectedUUID, {color: colors.textMuted}]}>
-                    {btn.connected ? 'Connected — in use now' : 'Not in range'}
-                  </Text>
-                  <View style={styles.connectedButtons}>
-                    <TouchableOpacity
-                      style={[styles.forgetButton, {backgroundColor: colors.redLight}]}
-                      onPress={() => forgetDevice(btn.uuid)}
-                      activeOpacity={0.7}>
-                      <Text style={[styles.forgetButtonText, {color: colors.red}]}>Forget</Text>
-                    </TouchableOpacity>
-                  </View>
+                  {renamingUUID === btn.uuid ? (
+                    <>
+                      <TextInput
+                        style={[styles.input, {backgroundColor: colors.bgInput, borderColor: colors.cardBorder, color: colors.text}]}
+                        value={renameText}
+                        onChangeText={setRenameText}
+                        placeholder="e.g. Training wing"
+                        placeholderTextColor={colors.textDim}
+                        autoFocus
+                        returnKeyType="done"
+                        onSubmitEditing={commitRename}
+                        maxLength={30}
+                      />
+                      <Text style={[styles.connectedUUID, {color: colors.textMuted}]}>
+                        Leave empty to go back to the device name
+                      </Text>
+                      <View style={styles.connectedButtons}>
+                        <TouchableOpacity
+                          style={[styles.changeButton, {backgroundColor: colors.primary}]}
+                          onPress={commitRename}
+                          activeOpacity={0.7}>
+                          <Text style={[styles.changeButtonText, {color: '#FFFFFF'}]}>Save</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.changeButton, {backgroundColor: colors.cardBorder}]}
+                          onPress={() => setRenamingUUID(null)}
+                          activeOpacity={0.7}>
+                          <Text style={[styles.changeButtonText, {color: colors.textSecondary}]}>Cancel</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={[styles.connectedName, {color: btn.connected ? colors.green : colors.text}]}>
+                        {btn.name || 'Saved button'}
+                      </Text>
+                      <Text style={[styles.connectedUUID, {color: colors.textMuted}]}>
+                        {btn.connected ? 'Connected — in use now' : 'Not in range'}
+                      </Text>
+                      <View style={styles.connectedButtons}>
+                        <TouchableOpacity
+                          style={[styles.changeButton, {backgroundColor: colors.cardBorder}]}
+                          onPress={() => {
+                            setRenamingUUID(btn.uuid);
+                            setRenameText(btn.name === 'Saved button' ? '' : btn.name);
+                          }}
+                          activeOpacity={0.7}>
+                          <Text style={[styles.changeButtonText, {color: colors.primary}]}>Rename</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.forgetButton, {backgroundColor: colors.redLight}]}
+                          onPress={() => forgetDevice(btn.uuid)}
+                          activeOpacity={0.7}>
+                          <Text style={[styles.forgetButtonText, {color: colors.red}]}>Forget</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
                 </View>
               ))}
 
@@ -503,6 +559,14 @@ const styles = StyleSheet.create({
   connectedUUID: {
     fontSize: 12,
     marginTop: 2,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    fontWeight: '500',
   },
   connectedButtons: {
     flexDirection: 'row',
