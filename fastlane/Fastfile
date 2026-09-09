@@ -114,12 +114,37 @@ platform :ios do
     if already
       UI.success("#{email} is already in #{group.name} — nothing to do.")
     else
-      Spaceship::ConnectAPI::BetaTester.create(
-        beta_group_id: group.id,
-        email: email,
-        first_name: user.first_name,
-        last_name: user.last_name
-      )
+      # spaceship has moved this call around between versions; try the known
+      # spellings rather than pinning to one and burning a CI run to find out.
+      added = false
+      if Spaceship::ConnectAPI.respond_to?(:create_beta_tester)
+        Spaceship::ConnectAPI.create_beta_tester(
+          beta_group_id: group.id,
+          email: email,
+          first_name: user.first_name,
+          last_name: user.last_name
+        )
+        added = true
+      elsif group.respond_to?(:post_bulk_beta_tester_assignments)
+        group.post_bulk_beta_tester_assignments(beta_testers: [
+          {email: email, firstName: user.first_name, lastName: user.last_name}
+        ])
+        added = true
+      elsif Spaceship::ConnectAPI::BetaTester.respond_to?(:find)
+        tester = Spaceship::ConnectAPI::BetaTester.find(email)
+        if tester
+          tester.add_to_beta_groups(beta_group_ids: [group.id])
+          added = true
+        end
+      end
+
+      unless added
+        UI.error("No usable spaceship API found. Available on ConnectAPI: " +
+                 Spaceship::ConnectAPI.methods.grep(/beta_tester/).join(', '))
+        UI.error("Available on BetaGroup instance: " +
+                 group.methods.grep(/beta_tester/).join(', '))
+        UI.user_error!("Could not add the tester — see the method lists above.")
+      end
       UI.success("Added #{email} to #{group.name}.")
     end
 
