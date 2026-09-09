@@ -44,7 +44,7 @@ jobs:
         run: |
           missing=""
           for v in ASC_KEY_P8_BASE64 ASC_KEY_ID ASC_ISSUER_ID APPLE_TEAM_ID \
-                   MATCH_PASSWORD MATCH_GIT_URL MATCH_GIT_TOKEN AGORA_APP_ID; do
+                   MATCH_PASSWORD MATCH_GIT_URL AGORA_APP_ID; do
             [ -z "${!v}" ] && missing="$missing $v"
           done
           if [ -n "$missing" ]; then
